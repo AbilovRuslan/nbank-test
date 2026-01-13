@@ -6,7 +6,8 @@ import org.apache.http.HttpStatus;
 import org.hamcrest.Matchers;
 
 public class ResponseSpecs {
-    private ResponseSpecs() {}
+    private ResponseSpecs() {
+    }
 
     private static ResponseSpecBuilder defaultResponseBuilder() {
         return new ResponseSpecBuilder();
@@ -28,6 +29,31 @@ public class ResponseSpecs {
         return defaultResponseBuilder()
                 .expectStatusCode(HttpStatus.SC_BAD_REQUEST)
                 .expectBody(errorKey, Matchers.hasItem(Matchers.containsString(errorValue)))
+                .build();
+    }
+
+    public static ResponseSpecification balanceWasUpdated() {
+        return defaultResponseBuilder()
+                .expectStatusCode(HttpStatus.SC_OK)
+                .build();
+    }
+
+    public static ResponseSpecification transferWasSuccessful() {
+        return defaultResponseBuilder()
+                .expectStatusCode(HttpStatus.SC_OK)
+                .build();
+    }
+
+    public static ResponseSpecification profileWasUpdated() {
+        return defaultResponseBuilder()
+                .expectStatusCode(HttpStatus.SC_OK)
+                .build();
+
+
+    }
+    public static ResponseSpecification badRequest() {
+        return defaultResponseBuilder()
+                .expectStatusCode(HttpStatus.SC_BAD_REQUEST)  // 400
                 .build();
     }
 }
