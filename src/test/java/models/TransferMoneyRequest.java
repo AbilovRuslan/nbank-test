@@ -11,10 +11,10 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class TransferMoneyRequest {
-    @JsonProperty("fromAccountId")
+    @JsonProperty("senderAccountId")
     private Long fromAccountId;
 
-    @JsonProperty("toAccountId")
+    @JsonProperty("receiverAccountId")
     private Long toAccountId;
 
     @JsonProperty("amount")

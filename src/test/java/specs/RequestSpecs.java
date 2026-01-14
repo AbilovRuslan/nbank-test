@@ -44,5 +44,10 @@ public class RequestSpecs {
                 .addHeader("Authorization", userAuthHeader)
                 .build();
     }
+    public static RequestSpecification authSpec(String base64AuthToken) {
+        return defaultRequestBuilder()
+                .addHeader("Authorization", "Basic " + base64AuthToken)
+                .build();
+    }
 
 }

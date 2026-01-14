@@ -4,11 +4,14 @@ import io.restassured.RestAssured;
 import io.restassured.filter.log.RequestLoggingFilter;
 import io.restassured.filter.log.ResponseLoggingFilter;
 import io.restassured.http.ContentType;
+import models.DepositMoneyRequest;
+import models.TransferMoneyRequest;
 import org.apache.http.HttpStatus;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Random;
 
 import static io.restassured.RestAssured.given;
 
@@ -21,246 +24,171 @@ public class TransferTest {
                         new ResponseLoggingFilter()));
     }
 
+    private String createUserAndLogin() {
+        String username = "user" + new Random().nextInt(10000);
+        String password = "Password123$";
+
+        // Создание пользователя
+        given()
+                .contentType(ContentType.JSON)
+                .header("Authorization", "Basic YWRtaW46YWRtaW4=")
+                .body("{\"username\": \"" + username + "\", \"password\": \"" + password + "\", \"role\": \"USER\"}")
+                .post("http://localhost:4111/api/v1/admin/users")
+                .then()
+                .statusCode(HttpStatus.SC_CREATED);
+
+        // Логин и возврат токена
+        return given()
+                .contentType(ContentType.JSON)
+                .body("{\"username\": \"" + username + "\", \"password\": \"" + password + "\"}")
+                .post("http://localhost:4111/api/v1/auth/login")
+                .then()
+                .statusCode(HttpStatus.SC_OK)
+                .extract()
+                .header("Authorization");
+    }
+
+    private Integer createAccount(String auth) {
+        return given()
+                .header("Authorization", auth)
+                .contentType(ContentType.JSON)
+                .post("http://localhost:4111/api/v1/accounts")
+                .then()
+                .statusCode(HttpStatus.SC_CREATED)
+                .extract()
+                .path("id");
+    }
+
+    private void depositToAccount(String auth, Integer accountId, Double amount) {
+        DepositMoneyRequest depositRequest = DepositMoneyRequest.builder()
+                .accountId(accountId.longValue())  // конвертируем Integer → Long
+                .amount(amount)
+                .build();
+
+        given()
+                .header("Authorization", auth)
+                .contentType(ContentType.JSON)
+                .body(depositRequest)
+                .post("http://localhost:4111/api/v1/accounts/deposit")
+                .then()
+                .statusCode(HttpStatus.SC_OK);
+    }
+
     @Test
     public void transferMoneyBetweenAccounts() {
-        // Основной тест
-        String username = "transfertest";
-        String password = "Password123$";
+        // 1. Создание пользователя и получение токена
+        String auth = createUserAndLogin();
 
-        given()
-                .contentType(ContentType.JSON)
-                .header("Authorization", "Basic YWRtaW46YWRtaW4=")
-                .body("{\"username\": \"" + username + "\", \"password\": \"" + password + "\", \"role\": \"USER\"}")
-                .post("http://localhost:4111/api/v1/admin/users")
-                .then()
-                .statusCode(HttpStatus.SC_CREATED);
+        // 2. Создание счетов
+        Integer senderAccountId = createAccount(auth);
+        Integer receiverAccountId = createAccount(auth);
 
-        String auth = given()
-                .contentType(ContentType.JSON)
-                .body("{\"username\": \"" + username + "\", \"password\": \"" + password + "\"}")
-                .post("http://localhost:4111/api/v1/auth/login")
-                .then()
-                .statusCode(HttpStatus.SC_OK)
-                .extract()
-                .header("Authorization");
+        // 3. Депозит на отправителя
+        depositToAccount(auth, senderAccountId, 1000.0);
 
-        Integer senderAccountId = given()
-                .header("Authorization", auth)
-                .contentType(ContentType.JSON)
-                .post("http://localhost:4111/api/v1/accounts")
-                .then()
-                .statusCode(HttpStatus.SC_CREATED)
-                .extract()
-                .path("id");
-
-        Integer receiverAccountId = given()
-                .header("Authorization", auth)
-                .contentType(ContentType.JSON)
-                .post("http://localhost:4111/api/v1/accounts")
-                .then()
-                .statusCode(HttpStatus.SC_CREATED)
-                .extract()
-                .path("id");
+        // 4. Перевод
+        TransferMoneyRequest transferRequest = TransferMoneyRequest.builder()
+                .fromAccountId(senderAccountId.longValue())  // Integer → Long
+                .toAccountId(receiverAccountId.longValue())  // Integer → Long
+                .amount(500.0)
+                .build();
 
         given()
                 .header("Authorization", auth)
                 .contentType(ContentType.JSON)
-                .body("{\"id\": " + senderAccountId + ", \"balance\": 15000.0}")
-                .post("http://localhost:4111/api/v1/accounts/deposit")
-                .then()
-                .statusCode(HttpStatus.SC_OK);
-
-        given()
-                .header("Authorization", auth)
-                .contentType(ContentType.JSON)
-                .body("{\"senderAccountId\": " + senderAccountId + ", \"receiverAccountId\": " + receiverAccountId + ", \"amount\": 5000.0}")
+                .body(transferRequest)
                 .post("http://localhost:4111/api/v1/accounts/transfer")
                 .then()
                 .statusCode(HttpStatus.SC_OK);
     }
 
     @Test
-    public void transferBoundaryValues() {
-        // Тест граничных значений для перевода
-        String username = "transboundary";
-        String password = "Password123$";
+    public void transferMinimumAmount() {
+        String auth = createUserAndLogin();
+        Integer senderAccountId = createAccount(auth);
+        Integer receiverAccountId = createAccount(auth);
 
-        given()
-                .contentType(ContentType.JSON)
-                .header("Authorization", "Basic YWRtaW46YWRtaW4=")
-                .body("{\"username\": \"" + username + "\", \"password\": \"" + password + "\", \"role\": \"USER\"}")
-                .post("http://localhost:4111/api/v1/admin/users")
-                .then()
-                .statusCode(HttpStatus.SC_CREATED);
+        depositToAccount(auth, senderAccountId, 100.0);
 
-        String auth = given()
-                .contentType(ContentType.JSON)
-                .body("{\"username\": \"" + username + "\", \"password\": \"" + password + "\"}")
-                .post("http://localhost:4111/api/v1/auth/login")
-                .then()
-                .statusCode(HttpStatus.SC_OK)
-                .extract()
-                .header("Authorization");
-
-        // Тест 1: 9999.99 (ниже границы 10000)
-        Integer sender1 = given()
-                .header("Authorization", auth)
-                .contentType(ContentType.JSON)
-                .post("http://localhost:4111/api/v1/accounts")
-                .then()
-                .statusCode(HttpStatus.SC_CREATED)
-                .extract()
-                .path("id");
-
-        Integer receiver1 = given()
-                .header("Authorization", auth)
-                .contentType(ContentType.JSON)
-                .post("http://localhost:4111/api/v1/accounts")
-                .then()
-                .statusCode(HttpStatus.SC_CREATED)
-                .extract()
-                .path("id");
+        TransferMoneyRequest transferRequest = TransferMoneyRequest.builder()
+                .fromAccountId(senderAccountId.longValue())
+                .toAccountId(receiverAccountId.longValue())
+                .amount(0.01)
+                .build();
 
         given()
                 .header("Authorization", auth)
                 .contentType(ContentType.JSON)
-                .body("{\"id\": " + sender1 + ", \"balance\": 20000.0}")
-                .post("http://localhost:4111/api/v1/accounts/deposit")
-                .then()
-                .statusCode(HttpStatus.SC_OK);
-
-        given()
-                .header("Authorization", auth)
-                .contentType(ContentType.JSON)
-                .body("{\"senderAccountId\": " + sender1 + ", \"receiverAccountId\": " + receiver1 + ", \"amount\": 9999.99}")
-                .post("http://localhost:4111/api/v1/accounts/transfer")
-                .then()
-                .statusCode(HttpStatus.SC_OK);
-
-        // Тест 2: 10000.01 (выше границы 10000)
-        Integer sender2 = given()
-                .header("Authorization", auth)
-                .contentType(ContentType.JSON)
-                .post("http://localhost:4111/api/v1/accounts")
-                .then()
-                .statusCode(HttpStatus.SC_CREATED)
-                .extract()
-                .path("id");
-
-        Integer receiver2 = given()
-                .header("Authorization", auth)
-                .contentType(ContentType.JSON)
-                .post("http://localhost:4111/api/v1/accounts")
-                .then()
-                .statusCode(HttpStatus.SC_CREATED)
-                .extract()
-                .path("id");
-
-        given()
-                .header("Authorization", auth)
-                .contentType(ContentType.JSON)
-                .body("{\"id\": " + sender2 + ", \"balance\": 20000.0}")
-                .post("http://localhost:4111/api/v1/accounts/deposit")
-                .then()
-                .statusCode(HttpStatus.SC_OK);
-
-        given()
-                .header("Authorization", auth)
-                .contentType(ContentType.JSON)
-                .body("{\"senderAccountId\": " + sender2 + ", \"receiverAccountId\": " + receiver2 + ", \"amount\": 10000.01}")
-                .post("http://localhost:4111/api/v1/accounts/transfer")
-                .then()
-                .statusCode(HttpStatus.SC_OK);
-
-        // Тест 3: 0.01 (минимальный перевод)
-        Integer sender3 = given()
-                .header("Authorization", auth)
-                .contentType(ContentType.JSON)
-                .post("http://localhost:4111/api/v1/accounts")
-                .then()
-                .statusCode(HttpStatus.SC_CREATED)
-                .extract()
-                .path("id");
-
-        Integer receiver3 = given()
-                .header("Authorization", auth)
-                .contentType(ContentType.JSON)
-                .post("http://localhost:4111/api/v1/accounts")
-                .then()
-                .statusCode(HttpStatus.SC_CREATED)
-                .extract()
-                .path("id");
-
-        given()
-                .header("Authorization", auth)
-                .contentType(ContentType.JSON)
-                .body("{\"id\": " + sender3 + ", \"balance\": 100.0}")
-                .post("http://localhost:4111/api/v1/accounts/deposit")
-                .then()
-                .statusCode(HttpStatus.SC_OK);
-
-        given()
-                .header("Authorization", auth)
-                .contentType(ContentType.JSON)
-                .body("{\"senderAccountId\": " + sender3 + ", \"receiverAccountId\": " + receiver3 + ", \"amount\": 0.01}")
+                .body(transferRequest)
                 .post("http://localhost:4111/api/v1/accounts/transfer")
                 .then()
                 .statusCode(HttpStatus.SC_OK);
     }
 
     @Test
-    public void cannotTransferZeroAmount() {
-        String username = "transzero";
-        String password = "Password123$";
+    public void transferBelowLimit() {
+        String auth = createUserAndLogin();
+        Integer senderAccountId = createAccount(auth);
+        Integer receiverAccountId = createAccount(auth);
 
-        given()
-                .contentType(ContentType.JSON)
-                .header("Authorization", "Basic YWRtaW46YWRtaW4=")
-                .body("{\"username\": \"" + username + "\", \"password\": \"" + password + "\", \"role\": \"USER\"}")
-                .post("http://localhost:4111/api/v1/admin/users")
-                .then()
-                .statusCode(HttpStatus.SC_CREATED);
+        depositToAccount(auth, senderAccountId, 5000.0);
 
-        String auth = given()
-                .contentType(ContentType.JSON)
-                .body("{\"username\": \"" + username + "\", \"password\": \"" + password + "\"}")
-                .post("http://localhost:4111/api/v1/auth/login")
-                .then()
-                .statusCode(HttpStatus.SC_OK)
-                .extract()
-                .header("Authorization");
-
-        Integer senderAccountId = given()
-                .header("Authorization", auth)
-                .contentType(ContentType.JSON)
-                .post("http://localhost:4111/api/v1/accounts")
-                .then()
-                .statusCode(HttpStatus.SC_CREATED)
-                .extract()
-                .path("id");
-
-        Integer receiverAccountId = given()
-                .header("Authorization", auth)
-                .contentType(ContentType.JSON)
-                .post("http://localhost:4111/api/v1/accounts")
-                .then()
-                .statusCode(HttpStatus.SC_CREATED)
-                .extract()
-                .path("id");
+        TransferMoneyRequest transferRequest = TransferMoneyRequest.builder()
+                .fromAccountId(senderAccountId.longValue())
+                .toAccountId(receiverAccountId.longValue())
+                .amount(4999.99)
+                .build();
 
         given()
                 .header("Authorization", auth)
                 .contentType(ContentType.JSON)
-                .body("{\"id\": " + senderAccountId + ", \"balance\": 100.0}")
-                .post("http://localhost:4111/api/v1/accounts/deposit")
+                .body(transferRequest)
+                .post("http://localhost:4111/api/v1/accounts/transfer")
                 .then()
                 .statusCode(HttpStatus.SC_OK);
+    }
 
-        // Попытка перевода 0.00
+    @Test
+    public void transferAboveLimit() {
+        String auth = createUserAndLogin();
+        Integer senderAccountId = createAccount(auth);
+        Integer receiverAccountId = createAccount(auth);
+
+        depositToAccount(auth, senderAccountId, 5000.0);
+
+        TransferMoneyRequest transferRequest = TransferMoneyRequest.builder()
+                .fromAccountId(senderAccountId.longValue())
+                .toAccountId(receiverAccountId.longValue())
+                .amount(5000.01)
+                .build();
+
         given()
                 .header("Authorization", auth)
                 .contentType(ContentType.JSON)
-                .body("{\"senderAccountId\": " + senderAccountId + ", \"receiverAccountId\": " + receiverAccountId + ", \"amount\": 0.00}")
+                .body(transferRequest)
+                .post("http://localhost:4111/api/v1/accounts/transfer")
+                .then()
+                .statusCode(HttpStatus.SC_BAD_REQUEST);
+    }
+
+    @Test
+    public void cannotTransferZero() {
+        String auth = createUserAndLogin();
+        Integer senderAccountId = createAccount(auth);
+        Integer receiverAccountId = createAccount(auth);
+
+        depositToAccount(auth, senderAccountId, 100.0);
+
+        TransferMoneyRequest transferRequest = TransferMoneyRequest.builder()
+                .fromAccountId(senderAccountId.longValue())
+                .toAccountId(receiverAccountId.longValue())
+                .amount(0.0)
+                .build();
+
+        given()
+                .header("Authorization", auth)
+                .contentType(ContentType.JSON)
+                .body(transferRequest)
                 .post("http://localhost:4111/api/v1/accounts/transfer")
                 .then()
                 .statusCode(HttpStatus.SC_BAD_REQUEST);
@@ -268,11 +196,47 @@ public class TransferTest {
 
     @Test
     public void cannotTransferMoreThanBalance() {
-        // ... существующий тест
+        String auth = createUserAndLogin();
+        Integer senderAccountId = createAccount(auth);
+        Integer receiverAccountId = createAccount(auth);
+
+        depositToAccount(auth, senderAccountId, 100.0);
+
+        TransferMoneyRequest transferRequest = TransferMoneyRequest.builder()
+                .fromAccountId(senderAccountId.longValue())
+                .toAccountId(receiverAccountId.longValue())
+                .amount(150.0)
+                .build();
+
+        given()
+                .header("Authorization", auth)
+                .contentType(ContentType.JSON)
+                .body(transferRequest)
+                .post("http://localhost:4111/api/v1/accounts/transfer")
+                .then()
+                .statusCode(HttpStatus.SC_BAD_REQUEST);
     }
 
     @Test
-    public void cannotTransferNegativeAmount() {
-        // ... существующий тест
+    public void cannotTransferNegative() {
+        String auth = createUserAndLogin();
+        Integer senderAccountId = createAccount(auth);
+        Integer receiverAccountId = createAccount(auth);
+
+        depositToAccount(auth, senderAccountId, 100.0);
+
+        TransferMoneyRequest transferRequest = TransferMoneyRequest.builder()
+                .fromAccountId(senderAccountId.longValue())
+                .toAccountId(receiverAccountId.longValue())
+                .amount(-50.0)
+                .build();
+
+        given()
+                .header("Authorization", auth)
+                .contentType(ContentType.JSON)
+                .body(transferRequest)
+                .post("http://localhost:4111/api/v1/accounts/transfer")
+                .then()
+                .statusCode(HttpStatus.SC_BAD_REQUEST);
     }
 }
