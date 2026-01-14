@@ -7,6 +7,7 @@ import io.restassured.http.ContentType;
 import models.DepositMoneyRequest;
 import models.TransferMoneyRequest;
 import org.apache.http.HttpStatus;
+import org.hamcrest.Matchers;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
@@ -100,6 +101,23 @@ public class TransferTest {
                 .post("http://localhost:4111/api/v1/accounts/transfer")
                 .then()
                 .statusCode(HttpStatus.SC_OK);
+
+        // ДОБАВИЛ: Проверяем балансы ПОСЛЕ перевода
+        given()
+                .header("Authorization", auth)
+                .contentType(ContentType.JSON)
+                .get("http://localhost:4111/api/v1/accounts/" + senderAccountId)
+                .then()
+                .statusCode(HttpStatus.SC_OK)
+                .body("balance", Matchers.equalTo(10000.0f)); // 15000 - 5000
+
+        given()
+                .header("Authorization", auth)
+                .contentType(ContentType.JSON)
+                .get("http://localhost:4111/api/v1/accounts/" + receiverAccountId)
+                .then()
+                .statusCode(HttpStatus.SC_OK)
+                .body("balance", Matchers.equalTo(5000.0f)); // 0 + 5000
     }
 
     @Test
@@ -123,6 +141,23 @@ public class TransferTest {
                 .post("http://localhost:4111/api/v1/accounts/transfer")
                 .then()
                 .statusCode(HttpStatus.SC_OK);
+
+        // ДОБАВИЛ: Проверяем балансы ПОСЛЕ перевода 0.01
+        given()
+                .header("Authorization", auth)
+                .contentType(ContentType.JSON)
+                .get("http://localhost:4111/api/v1/accounts/" + sender3)
+                .then()
+                .statusCode(HttpStatus.SC_OK)
+                .body("balance", Matchers.equalTo(99.99f)); // 100 - 0.01
+
+        given()
+                .header("Authorization", auth)
+                .contentType(ContentType.JSON)
+                .get("http://localhost:4111/api/v1/accounts/" + receiver3)
+                .then()
+                .statusCode(HttpStatus.SC_OK)
+                .body("balance", Matchers.equalTo(0.01f));
     }
 
     @Test
@@ -192,6 +227,23 @@ public class TransferTest {
                 .post("http://localhost:4111/api/v1/accounts/transfer")
                 .then()
                 .statusCode(HttpStatus.SC_BAD_REQUEST);
+
+        // ДОБАВИЛ: Проверяем балансы ПОСЛЕ неудачного перевода 0.00
+        given()
+                .header("Authorization", auth)
+                .contentType(ContentType.JSON)
+                .get("http://localhost:4111/api/v1/accounts/" + senderAccountId)
+                .then()
+                .statusCode(HttpStatus.SC_OK)
+                .body("balance", Matchers.equalTo(100.0f)); // остался 100
+
+        given()
+                .header("Authorization", auth)
+                .contentType(ContentType.JSON)
+                .get("http://localhost:4111/api/v1/accounts/" + receiverAccountId)
+                .then()
+                .statusCode(HttpStatus.SC_OK)
+                .body("balance", Matchers.equalTo(0.0f)); // остался 0
     }
 
     @Test
