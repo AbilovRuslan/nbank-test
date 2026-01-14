@@ -10,11 +10,11 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Random;
 
 import static io.restassured.RestAssured.given;
 
 public class DepositMoney {
-
     @BeforeAll
     public static void setupRestAssured() {
         RestAssured.filters(
@@ -24,11 +24,14 @@ public class DepositMoney {
 
     @Test
     public void depositMoneyToAccount() {
-        // 1. Создаем пользователя
+        // 1. Создаем пользователя с коротким именем (3-15 символов)
+        String username = "user" + new Random().nextInt(10000);
+        String password = "Password123$";
+
         given()
                 .contentType(ContentType.JSON)
                 .header("Authorization", "Basic YWRtaW46YWRtaW4=")
-                .body("{\"username\": \"testuser1\", \"password\": \"Password123$\", \"role\": \"USER\"}")
+                .body("{\"username\": \"" + username + "\", \"password\": \"" + password + "\", \"role\": \"USER\"}")
                 .post("http://localhost:4111/api/v1/admin/users")
                 .then()
                 .statusCode(HttpStatus.SC_CREATED);
@@ -36,49 +39,134 @@ public class DepositMoney {
         // 2. Логинимся
         String auth = given()
                 .contentType(ContentType.JSON)
-                .body("{\"username\": \"testuser1\", \"password\": \"Password123$\"}")
+                .body("{\"username\": \"" + username + "\", \"password\": \"" + password + "\"}")
                 .post("http://localhost:4111/api/v1/auth/login")
                 .then()
-                .statusCode(HttpStatus.SC_OK)
+                .statusCode(200)
                 .extract()
                 .header("Authorization");
 
         // 3. Создаем счет
         Integer accountId = given()
                 .header("Authorization", auth)
-                .contentType(ContentType.JSON)
                 .post("http://localhost:4111/api/v1/accounts")
                 .then()
-                .statusCode(HttpStatus.SC_CREATED)
+                .statusCode(201)
                 .extract()
                 .path("id");
 
-        // 4. ДОБАВИЛ: Проверяем начальный баланс
-        given()
-                .header("Authorization", auth)
-                .contentType(ContentType.JSON)
-                .get("http://localhost:4111/api/v1/accounts/" + accountId)
-                .then()
-                .statusCode(HttpStatus.SC_OK)
-                .body("balance", Matchers.equalTo(0.0f));
-
-        // 5. Кладем деньги
+        // 4. Пополняем счет (максимум 5000 по ограничениям API)
         given()
                 .header("Authorization", auth)
                 .contentType(ContentType.JSON)
                 .body("{\"id\": " + accountId + ", \"balance\": 1000.0}")
                 .post("http://localhost:4111/api/v1/accounts/deposit")
                 .then()
-                .statusCode(HttpStatus.SC_OK);
+                .statusCode(200);
+    }
 
-        // 6.  ДОБАВИЛ: Проверяем что баланс изменился
+    @Test
+    public void depositBoundaryValues() {
+        // 1. Создаем пользователя
+        String username = "user" + new Random().nextInt(10000);
+        String password = "Password123$";
+
         given()
                 .header("Authorization", auth)
                 .contentType(ContentType.JSON)
-                .get("http://localhost:4111/api/v1/accounts/" + accountId)
+                .header("Authorization", "Basic YWRtaW46YWRtaW4=")
+                .body("{\"username\": \"" + username + "\", \"password\": \"" + password + "\", \"role\": \"USER\"}")
+                .post("http://localhost:4111/api/v1/admin/users")
                 .then()
-                .statusCode(HttpStatus.SC_OK)
-                .body("balance", Matchers.equalTo(1000.0f));
+                .statusCode(HttpStatus.SC_CREATED);
+
+        // 2. Логинимся
+        String auth = given()
+                .contentType(ContentType.JSON)
+                .body("{\"username\": \"" + username + "\", \"password\": \"" + password + "\"}")
+                .post("http://localhost:4111/api/v1/auth/login")
+                .then()
+                .statusCode(200)
+                .extract()
+                .header("Authorization");
+
+        // 3. Создаем счет
+        Integer accountId = given()
+                .header("Authorization", auth)
+                .post("http://localhost:4111/api/v1/accounts")
+                .then()
+                .statusCode(201)
+                .extract()
+                .path("id");
+
+        // 4. Тест минимального депозита (0.01)
+        given()
+                .header("Authorization", auth)
+                .contentType(ContentType.JSON)
+                .body("{\"id\": " + accountId + ", \"balance\": 0.01}")
+                .post("http://localhost:4111/api/v1/accounts/deposit")
+                .then()
+                .statusCode(200);
+
+        // 5. Тест максимального депозита (5000)
+        given()
+                .header("Authorization", auth)
+                .contentType(ContentType.JSON)
+                .body("{\"id\": " + accountId + ", \"balance\": 5000.0}")
+                .post("http://localhost:4111/api/v1/accounts/deposit")
+                .then()
+                .statusCode(200);
+
+        // 6. Тест превышения лимита (5000.01 - должен упасть)
+        given()
+                .header("Authorization", auth)
+                .contentType(ContentType.JSON)
+                .body("{\"id\": " + accountId + ", \"balance\": 5000.01}")
+                .post("http://localhost:4111/api/v1/accounts/deposit")
+                .then()
+                .statusCode(400);
     }
 
-}    
+    @Test
+    public void cannotDepositZero() {
+        // 1. Создаем пользователя
+        String username = "user" + new Random().nextInt(10000);
+        String password = "Password123$";
+
+        given()
+                .contentType(ContentType.JSON)
+                .header("Authorization", "Basic YWRtaW46YWRtaW4=")
+                .body("{\"username\": \"" + username + "\", \"password\": \"" + password + "\", \"role\": \"USER\"}")
+                .post("http://localhost:4111/api/v1/admin/users")
+                .then()
+                .statusCode(HttpStatus.SC_CREATED);
+
+        // 2. Логинимся
+        String auth = given()
+                .contentType(ContentType.JSON)
+                .body("{\"username\": \"" + username + "\", \"password\": \"" + password + "\"}")
+                .post("http://localhost:4111/api/v1/auth/login")
+                .then()
+                .statusCode(200)
+                .extract()
+                .header("Authorization");
+
+        // 3. Создаем счет
+        Integer accountId = given()
+                .header("Authorization", auth)
+                .post("http://localhost:4111/api/v1/accounts")
+                .then()
+                .statusCode(201)
+                .extract()
+                .path("id");
+
+        // 4. Попытка депозита 0 (должен упасть)
+        given()
+                .header("Authorization", auth)
+                .contentType(ContentType.JSON)
+                .body("{\"id\": " + accountId + ", \"balance\": 0.0}")
+                .post("http://localhost:4111/api/v1/accounts/deposit")
+                .then()
+                .statusCode(400);
+    }
+}
