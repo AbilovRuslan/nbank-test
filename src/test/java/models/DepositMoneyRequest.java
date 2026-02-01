@@ -11,9 +11,6 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class DepositMoneyRequest {
-    @JsonProperty("id")
-    private Long accountId;
-
-    @JsonProperty("balance")
-    private Double amount;
+    private Long id;
+    private Double balance;
 }

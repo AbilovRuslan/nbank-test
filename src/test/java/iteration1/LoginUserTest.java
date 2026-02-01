@@ -15,9 +15,13 @@ public class LoginUserTest extends BaseTest {
 
     @Test
     public void adminCanGenerateAuthTokenTest() {
+        // NOTE: config.properties created in src/test/resources/
+        // Using hardcoded values from iteration 1 template
+        // TODO: Read from config in next iteration
+
         LoginUserRequest userRequest = LoginUserRequest.builder()
-                .username("admin")
-                .password("admin")
+                .username("admin")  // Hardcoded in iteration 1 template
+                .password("admin")  // TODO: Move to config in next iteration
                 .build();
 
         new LoginUserRequester(RequestSpecs.unauthSpec(),
@@ -41,6 +45,6 @@ public class LoginUserTest extends BaseTest {
         new LoginUserRequester(RequestSpecs.unauthSpec(),
                 ResponseSpecs.requestReturnsOK())
                 .post(LoginUserRequest.builder().username(userRequest.getUsername()).password(userRequest.getPassword()).build())
-                .header("Authorization", Matchers.notNullValue());
+                .header(ResponseSpecs.AUTHORIZATION_HEADER, Matchers.notNullValue());
     }
 }
