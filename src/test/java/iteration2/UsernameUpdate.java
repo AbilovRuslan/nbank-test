@@ -4,186 +4,237 @@ import io.restassured.RestAssured;
 import io.restassured.filter.log.RequestLoggingFilter;
 import io.restassured.filter.log.ResponseLoggingFilter;
 import io.restassured.specification.RequestSpecification;
-import org.junit.jupiter.api.BeforeAll;
+import models.CreateUserRequest;
+import models.LoginUserRequest;  // ← ДОБАВЛЕН ЭТОТ ИМПОРТ
+import models.UserRole;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import requests.AdminCreateUserRequester;
+import requests.LoginUserRequester;
+import specs.RequestSpecs;
+import specs.ResponseSpecs;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 
 import static io.restassured.RestAssured.given;
-import static specs.RequestSpecs.*;
+import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.not;
 
 public class UsernameUpdate {
 
     private static RequestSpecification customerAuthSpec;
     private static String testUsername;
+    private static String testPassword;
 
-    @BeforeAll
-    public static void setup() {
+    @BeforeEach
+    public void setup() {
         RestAssured.baseURI = "http://localhost:4111";
+        RestAssured.filters(new RequestLoggingFilter(), new ResponseLoggingFilter());
 
-        RestAssured.filters(
-                List.of(new RequestLoggingFilter(),
-                        new ResponseLoggingFilter()));
-
-        // Создаем тестового пользователя
+        // Создаем нового тестового пользователя для каждого теста
         createTestCustomer();
     }
 
-    private static void createTestCustomer() {
-        // Создаем уникальные учетные данные (3-15 символов)
-        long timestamp = System.currentTimeMillis() % 10000;
+    private void createTestCustomer() {
+        // Генерация уникального username
+        long timestamp = System.currentTimeMillis() % 100000;
         testUsername = "cust_" + timestamp;
-        String testPassword = "Test123!";
+        testPassword = "Test123!";
 
-        // Убедимся, что username не длиннее 15 символов
-        if (testUsername.length() > 15) {
-            testUsername = testUsername.substring(0, 15);
-        }
+        CreateUserRequest userRequest = CreateUserRequest.builder()
+                .username(testUsername)
+                .password(testPassword)
+                .role(UserRole.USER.toString())
+                .build();
 
-        System.out.println("=== Создание тестового пользователя ===");
-        System.out.println("Username: " + testUsername);
-        System.out.println("Password: " + testPassword);
+        // Создание пользователя через админа
+        new AdminCreateUserRequester(
+                RequestSpecs.adminSpec(),
+                ResponseSpecs.entityWasCreated())
+                .post(userRequest);
 
-        // Создаем пользователя через админа (ожидаем 201 Created)
-        String createUserJson = String.format(
-                "{\"username\":\"%s\",\"password\":\"%s\",\"role\":\"USER\"}",
-                testUsername, testPassword);
+        // Логин и получение auth токена
+        LoginUserRequest loginRequest = LoginUserRequest.builder()  // ← СОЗДАЕМ LoginUserRequest
+                .username(testUsername)
+                .password(testPassword)
+                .build();
 
-        // Используем админа для создания пользователя
-        given()
-                .spec(adminSpec())
-                .body(createUserJson)
-                .post("/api/v1/admin/users")
-                .then()
-                .statusCode(201); // Ожидаем 201 Created
+        String token = new LoginUserRequester(
+                RequestSpecs.unauthSpec(),
+                ResponseSpecs.requestReturnsOK())
+                .post(loginRequest)  // ← ПЕРЕДАЕМ loginRequest, а НЕ userRequest
+                .extract()
+                .header(ResponseSpecs.AUTHORIZATION_HEADER);
 
-        System.out.println("Пользователь успешно создан");
+        customerAuthSpec = RequestSpecs.authSpec(token);
 
-        // Создаем токен авторизации вручную
-        String credentials = testUsername + ":" + testPassword;
-        String authToken = java.util.Base64.getEncoder().encodeToString(credentials.getBytes());
-
-        customerAuthSpec = unauthSpec()
-                .header("Authorization", "Basic " + authToken);
-
-        // Проверяем, что авторизация работает
+        // Проверка, что авторизация работает
         given()
                 .spec(customerAuthSpec)
                 .get("/api/v1/customer/profile")
                 .then()
                 .statusCode(200);
-
-        System.out.println("Пользователь успешно авторизован");
     }
+
+    // ================= HELPER METHODS =================
+
+    private String getCurrentCustomerName() {
+        return given()
+                .spec(customerAuthSpec)
+                .get("/api/v1/customer/profile")
+                .then()
+                .statusCode(200)
+                .extract()
+                .path("name");
+    }
+
+    private void updateCustomerName(String newName, int expectedStatus) {
+        given()
+                .spec(customerAuthSpec)
+                .body(Map.of("name", newName))
+                .put("/api/v1/customer/profile")
+                .then()
+                .statusCode(expectedStatus);
+    }
+
+    // ================= POSITIVE TESTS =================
 
     @Test
     public void customerCanUpdateOwnNameWithTwoWords() {
-        String jsonRequest = "{\"name\":\"Ivan Ivanov\"}";
+        String oldName = getCurrentCustomerName();
+        String newName = "Ivan Ivanov";
 
+        updateCustomerName(newName, 200);
+
+        // Проверка: имя реально поменялось
         given()
                 .spec(customerAuthSpec)
-                .body(jsonRequest)
-                .put("/api/v1/customer/profile")
+                .get("/api/v1/customer/profile")
                 .then()
                 .statusCode(200)
-                .body("customer.name", org.hamcrest.Matchers.equalTo("Ivan Ivanov"));
+                .body("name", equalTo(newName))
+                .body("name", not(equalTo(oldName)));
     }
 
     @Test
-    public void cannotUpdateNameWithOneWord() {
-        String jsonRequest = "{\"name\":\"Ivan\"}";
-
-        given()
-                .spec(customerAuthSpec)
-                .body(jsonRequest)
-                .put("/api/v1/customer/profile")
-                .then()
-                .statusCode(400);
-    }
-
-    @Test
-    public void cannotUpdateNameWithThreeWords() {
-        String jsonRequest = "{\"name\":\"Ivan Ivanov Petrovich\"}";
-
-        given()
-                .spec(customerAuthSpec)
-                .body(jsonRequest)
-                .put("/api/v1/customer/profile")
-                .then()
-                .statusCode(400);
-    }
-
-    @Test
-    public void cannotUpdateNameWithOnlySpaces() {
-        String jsonRequest = "{\"name\":\"  \"}";
-
-        given()
-                .spec(customerAuthSpec)
-                .body(jsonRequest)
-                .put("/api/v1/customer/profile")
-                .then()
-                .statusCode(400);
-    }
-
-    @Test
-    public void cannotUpdateNameWithEmptyString() {
-        String jsonRequest = "{\"name\":\"\"}";
-
-        given()
-                .spec(customerAuthSpec)
-                .body(jsonRequest)
-                .put("/api/v1/customer/profile")
-                .then()
-                .statusCode(400);
-    }
-
-    @Test
-    public void cannotUpdateNameWithSpecialCharacters() {
-        String jsonRequest = "{\"name\":\"Ivan@ Ivanov\"}";
-
-        given()
-                .spec(customerAuthSpec)
-                .body(jsonRequest)
-                .put("/api/v1/customer/profile")
-                .then()
-                .statusCode(400);
-    }
-
-    @Test
-
     public void canUpdateNameWithDifferentTwoWordFormats() {
-        // Тест должен проверять ТОЛЬКО валидные форматы
         List<String> validNames = Arrays.asList(
                 "John Doe",
-                "Anna Maria",     // Без дефиса!
+                "Anna Maria",
                 "Ivan Ivanov"
         );
 
         for (String name : validNames) {
-            String jsonRequest = String.format("{\"name\":\"%s\"}", name);
+            String oldName = getCurrentCustomerName();
+
+            updateCustomerName(name, 200);
 
             given()
                     .spec(customerAuthSpec)
-                    .body(jsonRequest)
-                    .put("/api/v1/customer/profile")
+                    .get("/api/v1/customer/profile")
                     .then()
                     .statusCode(200)
-                    .body("customer.name", org.hamcrest.Matchers.equalTo(name));
+                    .body("name", equalTo(name))
+                    .body("name", not(equalTo(oldName)));
         }
+    }
+
+    // ================= NEGATIVE TESTS =================
+
+    @Test
+    public void cannotUpdateNameWithOneWord() {
+        String oldName = getCurrentCustomerName();
+        String newName = "Ivan";
+
+        updateCustomerName(newName, 400);
+
+        // Проверка: имя не изменилось
+        given()
+                .spec(customerAuthSpec)
+                .get("/api/v1/customer/profile")
+                .then()
+                .statusCode(200)
+                .body("name", equalTo(oldName));
+    }
+
+    @Test
+    public void cannotUpdateNameWithThreeWords() {
+        String oldName = getCurrentCustomerName();
+        String newName = "Ivan Ivanov Petrovich";
+
+        updateCustomerName(newName, 400);
+
+        given()
+                .spec(customerAuthSpec)
+                .get("/api/v1/customer/profile")
+                .then()
+                .statusCode(200)
+                .body("name", equalTo(oldName));
+    }
+
+    @Test
+    public void cannotUpdateNameWithOnlySpaces() {
+        String oldName = getCurrentCustomerName();
+        String newName = "   ";
+
+        updateCustomerName(newName, 400);
+
+        given()
+                .spec(customerAuthSpec)
+                .get("/api/v1/customer/profile")
+                .then()
+                .statusCode(200)
+                .body("name", equalTo(oldName));
+    }
+
+    @Test
+    public void cannotUpdateNameWithEmptyString() {
+        String oldName = getCurrentCustomerName();
+        String newName = "";
+
+        updateCustomerName(newName, 400);
+
+        given()
+                .spec(customerAuthSpec)
+                .get("/api/v1/customer/profile")
+                .then()
+                .statusCode(200)
+                .body("name", equalTo(oldName));
+    }
+
+    @Test
+    public void cannotUpdateNameWithSpecialCharacters() {
+        String oldName = getCurrentCustomerName();
+        String newName = "Ivan@ Ivanov";
+
+        updateCustomerName(newName, 400);
+
+        given()
+                .spec(customerAuthSpec)
+                .get("/api/v1/customer/profile")
+                .then()
+                .statusCode(200)
+                .body("name", equalTo(oldName));
     }
 
     @Test
     public void cannotUpdateNameWithNumbers() {
-        String jsonRequest = "{\"name\":\"Ivan 123\"}";
+        String oldName = getCurrentCustomerName();
+        String newName = "Ivan 123";
+
+        updateCustomerName(newName, 400);
 
         given()
                 .spec(customerAuthSpec)
-                .body(jsonRequest)
-                .put("/api/v1/customer/profile")
+                .get("/api/v1/customer/profile")
                 .then()
-                .statusCode(400);
+                .statusCode(200)
+                .body("name", equalTo(oldName));
     }
+
+    // ================= EDGE CASE =================
 
     @Test
     public void testCustomerProfileAccess() {
@@ -193,5 +244,14 @@ public class UsernameUpdate {
                 .then()
                 .statusCode(200)
                 .log().body();
+    }
+
+    @Test
+    public void getProfileUnauthorized() {
+        given()
+                .spec(RequestSpecs.unauthSpec())
+                .get("/api/v1/customer/profile")
+                .then()
+                .statusCode(401);
     }
 }

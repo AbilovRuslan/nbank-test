@@ -1,294 +1,263 @@
 package iteration2;
 
-import io.restassured.RestAssured;
-import io.restassured.filter.log.RequestLoggingFilter;
-import io.restassured.filter.log.ResponseLoggingFilter;
-import io.restassured.http.ContentType;
+import generators.RandomData;
+import models.CreateUserRequest;
 import models.DepositMoneyRequest;
 import models.TransferMoneyRequest;
-import org.apache.http.HttpStatus;
-import org.hamcrest.Matchers;
-import org.junit.jupiter.api.BeforeAll;
+import models.UserRole;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import requests.AdminCreateUserRequester;
+import requests.CreateAccountRequester;
+import requests.DepositRequester;
+import requests.LoginUserRequester;
+import requests.TransferRequester;
+import specs.RequestSpecs;
+import specs.ResponseSpecs;
 
-import java.util.List;
 import java.util.Random;
 
 import static io.restassured.RestAssured.given;
+import static org.hamcrest.Matchers.closeTo;
+import static org.hamcrest.Matchers.equalTo;
 
 public class TransferTest {
 
-    @BeforeAll
-    public static void setupRestAssured() {
-        RestAssured.filters(
-                List.of(new RequestLoggingFilter(),
-                        new ResponseLoggingFilter()));
-    }
+    // ================= TEST DATA =================
+    private static final Random RANDOM = new Random();
 
-    private String createUserAndLogin() {
-        String username = "user" + new Random().nextInt(10000);
-        String password = "Password123$";
+    private String authToken;
+    private Integer senderAccountId;
+    private Integer receiverAccountId;
+    private Double initialBalance;
 
-        // Создание пользователя
-        given()
-                .contentType(ContentType.JSON)
-                .header("Authorization", "Basic YWRtaW46YWRtaW4=")
-                .body("{\"username\": \"" + username + "\", \"password\": \"" + password + "\", \"role\": \"USER\"}")
-                .post("http://localhost:4111/api/v1/admin/users")
-                .then()
-                .statusCode(HttpStatus.SC_CREATED);
+    // ================= SETUP =================
 
-        // Логин и возврат токена
-        return given()
-                .contentType(ContentType.JSON)
-                .body("{\"username\": \"" + username + "\", \"password\": \"" + password + "\"}")
-                .post("http://localhost:4111/api/v1/auth/login")
-                .then()
-                .statusCode(HttpStatus.SC_OK)
+    @BeforeEach
+    public void setupUserAndAccounts() {
+        // 1. Создаем пользователя через админа
+        CreateUserRequest userRequest = CreateUserRequest.builder()
+                .username(RandomData.getUsername())
+                .password(RandomData.getPassword())
+                .role(UserRole.USER.toString())
+                .build();
+
+        new AdminCreateUserRequester(
+                RequestSpecs.adminSpec(),
+                ResponseSpecs.entityWasCreated())
+                .post(userRequest);
+
+        // 2. Логинимся и получаем токен
+        authToken = new LoginUserRequester(
+                RequestSpecs.unauthSpec(),
+                ResponseSpecs.requestReturnsOK())
+                .post(userRequest)
                 .extract()
-                .header("Authorization");
-    }
+                .header(ResponseSpecs.AUTHORIZATION_HEADER);
 
-    private Integer createAccount(String auth) {
-        return given()
-                .header("Authorization", auth)
-                .contentType(ContentType.JSON)
-                .post("http://localhost:4111/api/v1/accounts")
-                .then()
-                .statusCode(HttpStatus.SC_CREATED)
+        // 3. Создаем два счета
+        senderAccountId = new CreateAccountRequester(
+                RequestSpecs.authSpec(authToken),
+                ResponseSpecs.entityWasCreated())
+                .post()
                 .extract()
                 .path("id");
-    }
 
-    private void depositToAccount(String auth, Integer accountId, Double amount) {
+        receiverAccountId = new CreateAccountRequester(
+                RequestSpecs.authSpec(authToken),
+                ResponseSpecs.entityWasCreated())
+                .post()
+                .extract()
+                .path("id");
+
+        // 4. Пополняем отправителя случайной суммой
+        initialBalance = 500.0 + RANDOM.nextDouble() * 4500.0; // 500-5000
+        initialBalance = Math.round(initialBalance * 100.0) / 100.0;
+
         DepositMoneyRequest depositRequest = DepositMoneyRequest.builder()
-                .accountId(accountId.longValue())  // конвертируем Integer → Long
-                .amount(amount)
+                .id(senderAccountId.longValue())
+                .balance(initialBalance)
                 .build();
 
-        given()
-                .header("Authorization", auth)
-                .contentType(ContentType.JSON)
-                .body(depositRequest)
-                .post("http://localhost:4111/api/v1/accounts/deposit")
-                .then()
-                .statusCode(HttpStatus.SC_OK);
+        new DepositRequester(
+                RequestSpecs.authSpec(authToken),
+                ResponseSpecs.balanceWasUpdated())
+                .post(depositRequest);
     }
 
+    // ================= HELPER METHODS =================
+
+    private void verifyBalances(Double expectedSenderBalance, Double expectedReceiverBalance) {
+        given()
+                .spec(RequestSpecs.authSpec(authToken))
+                .when()
+                .get("/api/v1/accounts/" + senderAccountId)
+                .then()
+                .spec(ResponseSpecs.requestReturnsOK())
+                .body("balance", closeTo(expectedSenderBalance.floatValue(), 0.001f));
+
+        given()
+                .spec(RequestSpecs.authSpec(authToken))
+                .when()
+                .get("/api/v1/accounts/" + receiverAccountId)
+                .then()
+                .spec(ResponseSpecs.requestReturnsOK())
+                .body("balance", closeTo(expectedReceiverBalance.floatValue(), 0.001f));
+    }
+
+    private Double randomTransferAmount(Double maxAmount) {
+        Double amount = 1.0 + RANDOM.nextDouble() * (maxAmount - 1.0);
+        return Math.round(amount * 100.0) / 100.0;
+    }
+
+    // ================= POSITIVE TESTS =================
+
     @Test
-    public void transferMoneyBetweenAccounts() {
-        // 1. Создание пользователя и получение токена
-        String auth = createUserAndLogin();
+    public void canTransferMoneyBetweenOwnAccounts() {
+        // Подготовка: случайная сумма для перевода
+        Double transferAmount = randomTransferAmount(initialBalance - 1.0);
 
-        // 2. Создание счетов
-        Integer senderAccountId = createAccount(auth);
-        Integer receiverAccountId = createAccount(auth);
-
-        // 3. Депозит на отправителя
-        depositToAccount(auth, senderAccountId, 1000.0);
-
-        // 4. Перевод
         TransferMoneyRequest transferRequest = TransferMoneyRequest.builder()
-                .fromAccountId(senderAccountId.longValue())  // Integer → Long
-                .toAccountId(receiverAccountId.longValue())  // Integer → Long
-                .amount(500.0)
+                .fromAccountId(senderAccountId.longValue())
+                .toAccountId(receiverAccountId.longValue())
+                .amount(transferAmount)
                 .build();
 
-        given()
-                .header("Authorization", auth)
-                .contentType(ContentType.JSON)
-                .body(transferRequest)
-                .post("http://localhost:4111/api/v1/accounts/transfer")
-                .then()
-                .statusCode(HttpStatus.SC_OK);
+        // Выполнение перевода
+        new TransferRequester(
+                RequestSpecs.authSpec(authToken),
+                ResponseSpecs.transferWasSuccessful())
+                .post(transferRequest);
 
-        // ДОБАВИЛ: Проверяем балансы ПОСЛЕ перевода
-        given()
-                .header("Authorization", auth)
-                .contentType(ContentType.JSON)
-                .get("http://localhost:4111/api/v1/accounts/" + senderAccountId)
-                .then()
-                .statusCode(HttpStatus.SC_OK)
-                .body("balance", Matchers.equalTo(10000.0f)); // 15000 - 5000
-
-        given()
-                .header("Authorization", auth)
-                .contentType(ContentType.JSON)
-                .get("http://localhost:4111/api/v1/accounts/" + receiverAccountId)
-                .then()
-                .statusCode(HttpStatus.SC_OK)
-                .body("balance", Matchers.equalTo(5000.0f)); // 0 + 5000
+        // Проверка: балансы изменились корректно
+        verifyBalances(
+                initialBalance - transferAmount,
+                transferAmount
+        );
     }
 
     @Test
-    public void transferMinimumAmount() {
-        String auth = createUserAndLogin();
-        Integer senderAccountId = createAccount(auth);
-        Integer receiverAccountId = createAccount(auth);
-
-        depositToAccount(auth, senderAccountId, 100.0);
-
+    public void canTransferMinimumAmount() {
         TransferMoneyRequest transferRequest = TransferMoneyRequest.builder()
                 .fromAccountId(senderAccountId.longValue())
                 .toAccountId(receiverAccountId.longValue())
                 .amount(0.01)
                 .build();
 
-        given()
-                .header("Authorization", auth)
-                .contentType(ContentType.JSON)
-                .body(transferRequest)
-                .post("http://localhost:4111/api/v1/accounts/transfer")
-                .then()
-                .statusCode(HttpStatus.SC_OK);
+        new TransferRequester(
+                RequestSpecs.authSpec(authToken),
+                ResponseSpecs.transferWasSuccessful())
+                .post(transferRequest);
 
-        // ДОБАВИЛ: Проверяем балансы ПОСЛЕ перевода 0.01
-        given()
-                .header("Authorization", auth)
-                .contentType(ContentType.JSON)
-                .get("http://localhost:4111/api/v1/accounts/" + sender3)
-                .then()
-                .statusCode(HttpStatus.SC_OK)
-                .body("balance", Matchers.equalTo(99.99f)); // 100 - 0.01
-
-        given()
-                .header("Authorization", auth)
-                .contentType(ContentType.JSON)
-                .get("http://localhost:4111/api/v1/accounts/" + receiver3)
-                .then()
-                .statusCode(HttpStatus.SC_OK)
-                .body("balance", Matchers.equalTo(0.01f));
+        verifyBalances(initialBalance - 0.01, 0.01);
     }
 
     @Test
-    public void transferBelowLimit() {
-        String auth = createUserAndLogin();
-        Integer senderAccountId = createAccount(auth);
-        Integer receiverAccountId = createAccount(auth);
-
-        depositToAccount(auth, senderAccountId, 5000.0);
+    public void canTransferMaximumWithinLimit() {
+        // Переводим почти весь баланс (оставляем 0.01)
+        Double transferAmount = initialBalance - 0.01;
 
         TransferMoneyRequest transferRequest = TransferMoneyRequest.builder()
                 .fromAccountId(senderAccountId.longValue())
                 .toAccountId(receiverAccountId.longValue())
-                .amount(4999.99)
+                .amount(transferAmount)
                 .build();
 
-        given()
-                .header("Authorization", auth)
-                .contentType(ContentType.JSON)
-                .body(transferRequest)
-                .post("http://localhost:4111/api/v1/accounts/transfer")
-                .then()
-                .statusCode(HttpStatus.SC_OK);
+        new TransferRequester(
+                RequestSpecs.authSpec(authToken),
+                ResponseSpecs.transferWasSuccessful())
+                .post(transferRequest);
+
+        verifyBalances(0.01, transferAmount);
     }
 
-    @Test
-    public void transferAboveLimit() {
-        String auth = createUserAndLogin();
-        Integer senderAccountId = createAccount(auth);
-        Integer receiverAccountId = createAccount(auth);
-
-        depositToAccount(auth, senderAccountId, 5000.0);
-
-        TransferMoneyRequest transferRequest = TransferMoneyRequest.builder()
-                .fromAccountId(senderAccountId.longValue())
-                .toAccountId(receiverAccountId.longValue())
-                .amount(5000.01)
-                .build();
-
-        given()
-                .header("Authorization", auth)
-                .contentType(ContentType.JSON)
-                .body(transferRequest)
-                .post("http://localhost:4111/api/v1/accounts/transfer")
-                .then()
-                .statusCode(HttpStatus.SC_BAD_REQUEST);
-    }
+    // ================= NEGATIVE TESTS =================
 
     @Test
     public void cannotTransferZero() {
-        String auth = createUserAndLogin();
-        Integer senderAccountId = createAccount(auth);
-        Integer receiverAccountId = createAccount(auth);
-
-        depositToAccount(auth, senderAccountId, 100.0);
-
         TransferMoneyRequest transferRequest = TransferMoneyRequest.builder()
                 .fromAccountId(senderAccountId.longValue())
                 .toAccountId(receiverAccountId.longValue())
                 .amount(0.0)
                 .build();
 
-        given()
-                .header("Authorization", auth)
-                .contentType(ContentType.JSON)
-                .body(transferRequest)
-                .post("http://localhost:4111/api/v1/accounts/transfer")
-                .then()
-                .statusCode(HttpStatus.SC_BAD_REQUEST);
+        new TransferRequester(
+                RequestSpecs.authSpec(authToken),
+                ResponseSpecs.badRequest())
+                .post(transferRequest);
 
-        // ДОБАВИЛ: Проверяем балансы ПОСЛЕ неудачного перевода 0.00
-        given()
-                .header("Authorization", auth)
-                .contentType(ContentType.JSON)
-                .get("http://localhost:4111/api/v1/accounts/" + senderAccountId)
-                .then()
-                .statusCode(HttpStatus.SC_OK)
-                .body("balance", Matchers.equalTo(100.0f)); // остался 100
-
-        given()
-                .header("Authorization", auth)
-                .contentType(ContentType.JSON)
-                .get("http://localhost:4111/api/v1/accounts/" + receiverAccountId)
-                .then()
-                .statusCode(HttpStatus.SC_OK)
-                .body("balance", Matchers.equalTo(0.0f)); // остался 0
+        // Проверка: балансы не изменились
+        verifyBalances(initialBalance, 0.0);
     }
 
     @Test
     public void cannotTransferMoreThanBalance() {
-        String auth = createUserAndLogin();
-        Integer senderAccountId = createAccount(auth);
-        Integer receiverAccountId = createAccount(auth);
-
-        depositToAccount(auth, senderAccountId, 100.0);
-
         TransferMoneyRequest transferRequest = TransferMoneyRequest.builder()
                 .fromAccountId(senderAccountId.longValue())
                 .toAccountId(receiverAccountId.longValue())
-                .amount(150.0)
+                .amount(initialBalance + 100.0)
                 .build();
 
-        given()
-                .header("Authorization", auth)
-                .contentType(ContentType.JSON)
-                .body(transferRequest)
-                .post("http://localhost:4111/api/v1/accounts/transfer")
-                .then()
-                .statusCode(HttpStatus.SC_BAD_REQUEST);
+        new TransferRequester(
+                RequestSpecs.authSpec(authToken),
+                ResponseSpecs.badRequest())
+                .post(transferRequest);
+
+        verifyBalances(initialBalance, 0.0);
     }
 
     @Test
-    public void cannotTransferNegative() {
-        String auth = createUserAndLogin();
-        Integer senderAccountId = createAccount(auth);
-        Integer receiverAccountId = createAccount(auth);
-
-        depositToAccount(auth, senderAccountId, 100.0);
-
+    public void cannotTransferNegativeAmount() {
         TransferMoneyRequest transferRequest = TransferMoneyRequest.builder()
                 .fromAccountId(senderAccountId.longValue())
                 .toAccountId(receiverAccountId.longValue())
                 .amount(-50.0)
                 .build();
 
+        new TransferRequester(
+                RequestSpecs.authSpec(authToken),
+                ResponseSpecs.badRequest())
+                .post(transferRequest);
+
+        verifyBalances(initialBalance, 0.0);
+    }
+
+    @Test
+    public void cannotTransferAboveSystemLimit() {
+        // Если в системе есть лимит 5000
+        TransferMoneyRequest transferRequest = TransferMoneyRequest.builder()
+                .fromAccountId(senderAccountId.longValue())
+                .toAccountId(receiverAccountId.longValue())
+                .amount(5000.01)
+                .build();
+
+        new TransferRequester(
+                RequestSpecs.authSpec(authToken),
+                ResponseSpecs.badRequest())
+                .post(transferRequest);
+
+        verifyBalances(initialBalance, 0.0);
+    }
+
+    // ================= EDGE CASES =================
+
+    @Test
+    public void getAccountUnauthorized() {
         given()
-                .header("Authorization", auth)
-                .contentType(ContentType.JSON)
-                .body(transferRequest)
-                .post("http://localhost:4111/api/v1/accounts/transfer")
+                .spec(RequestSpecs.unauthSpec())
+                .when()
+                .get("/api/v1/accounts/" + senderAccountId)
                 .then()
-                .statusCode(HttpStatus.SC_BAD_REQUEST);
+                .spec(ResponseSpecs.unauthorized());
+    }
+
+    @Test
+    public void getNonExistingAccount() {
+        given()
+                .spec(RequestSpecs.authSpec(authToken))
+                .when()
+                .get("/api/v1/accounts/999999")
+                .then()
+                .spec(ResponseSpecs.notFound());
     }
 }

@@ -22,4 +22,6 @@ public class LoginUserRequester extends Request<LoginUserRequest> {
                 .assertThat()
                 .spec(responseSpecification);
     }
+
+
 }
