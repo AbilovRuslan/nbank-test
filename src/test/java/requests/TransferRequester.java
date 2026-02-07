@@ -17,12 +17,42 @@ public class TransferRequester {
     }
 
     public ValidatableResponse post(TransferMoneyRequest request) {
+        // Преобразуем запрос в правильный формат для API
         return given()
                 .spec(requestSpec)
-                .body(request)
+                .body(new TransferRequestBody(
+                        request.getFromAccountId(),
+                        request.getToAccountId(),
+                        request.getAmount()
+                ))
                 .when()
                 .post("/api/v1/accounts/transfer")
                 .then()
                 .spec(responseSpec);
+    }
+
+    // Вспомогательный класс с правильными именами полей
+    private static class TransferRequestBody {
+        private final Long senderAccountId;
+        private final Long receiverAccountId;
+        private final Double amount;
+
+        public TransferRequestBody(Long fromAccountId, Long toAccountId, Double amount) {
+            this.senderAccountId = fromAccountId;
+            this.receiverAccountId = toAccountId;
+            this.amount = amount;
+        }
+
+        public Long getSenderAccountId() {
+            return senderAccountId;
+        }
+
+        public Long getReceiverAccountId() {
+            return receiverAccountId;
+        }
+
+        public Double getAmount() {
+            return amount;
+        }
     }
 }

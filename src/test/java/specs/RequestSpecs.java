@@ -17,7 +17,7 @@ public class RequestSpecs {
         return new RequestSpecBuilder()
                 .setContentType(ContentType.JSON)
                 .setAccept(ContentType.JSON)
-                .addFilters( List.of(new RequestLoggingFilter(),
+                .addFilters(List.of(new RequestLoggingFilter(),
                         new ResponseLoggingFilter()))
                 .setBaseUri("http://localhost:4111");
     }
@@ -40,14 +40,49 @@ public class RequestSpecs {
                 .extract()
                 .header("Authorization");
 
-        return defaultRequestBuilder()
-                .addHeader("Authorization", userAuthHeader)
-                .build();
+        return authSpec(userAuthHeader);
     }
-    public static RequestSpecification authSpec(String base64AuthToken) {
+
+    public static RequestSpecification authSpec(String authToken) {
+        if (authToken == null) {
+            throw new IllegalArgumentException("Auth token cannot be null");
+        }
+
+        // Очищаем токен от возможных дублирований "Basic "
+        String cleanToken = cleanAuthToken(authToken);
+
         return defaultRequestBuilder()
-                .addHeader("Authorization", "Basic " + base64AuthToken)
+                .addHeader("Authorization", cleanToken)
                 .build();
     }
 
+    private static String cleanAuthToken(String authToken) {
+        if (authToken == null || authToken.trim().isEmpty()) {
+            return authToken;
+        }
+
+        String trimmed = authToken.trim();
+
+        // Удаляем все вхождения "Basic " в начале строки
+        while (trimmed.startsWith("Basic ")) {
+            trimmed = trimmed.substring(6).trim();
+        }
+
+        // Добавляем "Basic " один раз
+        return "Basic " + trimmed;
+    }
+
+    // Метод для извлечения чистого токена (без "Basic ")
+    public static String extractTokenFromHeader(String authHeader) {
+        if (authHeader == null || authHeader.trim().isEmpty()) {
+            return "";
+        }
+
+        String trimmed = authHeader.trim();
+        // Удаляем все вхождения "Basic " в начале строки
+        while (trimmed.startsWith("Basic ")) {
+            trimmed = trimmed.substring(6).trim();
+        }
+        return trimmed;
+    }
 }
