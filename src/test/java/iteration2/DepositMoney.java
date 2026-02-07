@@ -1,5 +1,6 @@
 package iteration2;
 
+import constants.Endpoints;
 import generators.RandomData;
 import models.CreateUserRequest;
 import models.DepositMoneyRequest;
@@ -10,10 +11,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
-import requests.AdminCreateUserRequester;
-import requests.CreateAccountRequester;
-import requests.DepositRequester;
-import requests.LoginUserRequester;
 import specs.RequestSpecs;
 import specs.ResponseSpecs;
 
@@ -30,240 +27,151 @@ public class DepositMoney {
 
     private String authToken;
     private Integer accountId;
-    private String testUsername;
-    private String testPassword;
 
     @BeforeEach
-    public void setupUserAndAccount() {
-        // 1. Генерируем учетные данные
-        testUsername = RandomData.getUsername();
-        testPassword = RandomData.getPassword();
+    void setup() {
+        String username = RandomData.getUsername();
+        String password = RandomData.getPassword();
 
-        // 2. Создаем пользователя
         CreateUserRequest userRequest = CreateUserRequest.builder()
-                .username(testUsername)
-                .password(testPassword)
+                .username(username)
+                .password(password)
                 .role(UserRole.USER.toString())
                 .build();
 
-        new AdminCreateUserRequester(
-                RequestSpecs.adminSpec(),
-                ResponseSpecs.entityWasCreated())
-                .post(userRequest);
+        given()
+                .spec(RequestSpecs.adminSpec())
+                .body(userRequest)
+                .post(Endpoints.ADMIN_USERS)
+                .then()
+                .spec(ResponseSpecs.entityWasCreated());
 
-        // 3. Логинимся и получаем токен
         LoginUserRequest loginRequest = LoginUserRequest.builder()
-                .username(testUsername)
-                .password(testPassword)
+                .username(username)
+                .password(password)
                 .build();
 
-        authToken = new LoginUserRequester(
-                RequestSpecs.unauthSpec(),
-                ResponseSpecs.requestReturnsOK())
-                .post(loginRequest)  // ← ПРАВИЛЬНО: передаем loginRequest, а не userRequest
+        authToken = given()
+                .spec(RequestSpecs.unauthSpec())
+                .body(loginRequest)
+                .post(Endpoints.LOGIN)
+                .then()
+                .spec(ResponseSpecs.requestReturnsOK())
                 .extract()
                 .header(ResponseSpecs.AUTHORIZATION_HEADER);
 
-        // 4. Создаем счет
-        accountId = new CreateAccountRequester(
-                RequestSpecs.authSpec(authToken),
-                ResponseSpecs.entityWasCreated())
-                .post()
+        accountId = given()
+                .spec(RequestSpecs.authSpec(authToken))
+                .post(Endpoints.ACCOUNTS)
+                .then()
+                .spec(ResponseSpecs.entityWasCreated())
                 .extract()
                 .path("id");
     }
 
-    // ================= POSITIVE TESTS (валидные суммы) =================
+    // ================= ALL POSITIVE TESTS (12 проверок) =================
 
-    @ParameterizedTest(name = "Customer can deposit valid amount: {0}")
+    @Test
+    void canDepositMinimumAmount() {
+        deposit(MIN_DEPOSIT_AMOUNT);
+        verifyBalance(MIN_DEPOSIT_AMOUNT);
+    }
+
+    @Test
+    void canDepositMaximumAmount() {
+        deposit(MAX_DEPOSIT_LIMIT);
+        verifyBalance(MAX_DEPOSIT_LIMIT);
+    }
+
+    @ParameterizedTest
     @CsvSource({
-            "0.01",      // минимальный депозит
-            "100.50",    // обычная сумма
-            "2500.75",   // средняя сумма
-            "4999.99",   // почти максимум
-            "5000.0"     // максимальный депозит
+            "0.01",      // мин
+            "100.50",    // обычная
+            "2500.75",   // средняя
+            "4999.99",   // почти макс
+            "5000.0"     // макс
     })
-    public void customerCanDepositValidAmounts(double depositAmount) {
-        // Округляем до 2 знаков
-        depositAmount = Math.round(depositAmount * 100.0) / 100.0;
-
-        DepositMoneyRequest depositRequest = DepositMoneyRequest.builder()
-                .id(accountId.longValue())
-                .balance(depositAmount)
-                .build();
-
-        new DepositRequester(
-                RequestSpecs.authSpec(authToken),
-                ResponseSpecs.balanceWasUpdated())
-                .post(depositRequest);
-
-        // Проверяем, что баланс обновился
-        given()
-                .spec(RequestSpecs.authSpec(authToken))
-                .when()
-                .get("/api/v1/accounts/" + accountId)
-                .then()
-                .spec(ResponseSpecs.requestReturnsOK())
-                .body("balance", equalTo((float) depositAmount));
+    void customerCanDepositValidAmounts(double amount) {
+        deposit(amount);
+        verifyBalance(amount);
     }
 
     @Test
-    public void customerCanDepositRandomPositiveAmount() {
-        // Генерация случайной суммы в пределах лимита
-        double depositAmount = MIN_DEPOSIT_AMOUNT +
+    void customerCanDepositRandomPositiveAmount() {
+        double amount = MIN_DEPOSIT_AMOUNT +
                 RANDOM.nextDouble() * (MAX_DEPOSIT_LIMIT - MIN_DEPOSIT_AMOUNT);
-        depositAmount = Math.round(depositAmount * 100.0) / 100.0;
+        amount = Math.round(amount * 100.0) / 100.0;
 
-        DepositMoneyRequest depositRequest = DepositMoneyRequest.builder()
-                .id(accountId.longValue())
-                .balance(depositAmount)
-                .build();
-
-        new DepositRequester(
-                RequestSpecs.authSpec(authToken),
-                ResponseSpecs.balanceWasUpdated())
-                .post(depositRequest);
-
-        // Проверяем баланс
-        given()
-                .spec(RequestSpecs.authSpec(authToken))
-                .when()
-                .get("/api/v1/accounts/" + accountId)
-                .then()
-                .spec(ResponseSpecs.requestReturnsOK())
-                .body("balance", equalTo((float) depositAmount));
+        deposit(amount);
+        verifyBalance(amount);
     }
 
-    // ================= NEGATIVE TESTS (невалидные суммы) =================
+    @Test
+    void multipleDepositsUpdateBalanceCorrectly() {
+        double first = 1000.0;
+        double second = 500.0;
 
-    @ParameterizedTest(name = "Cannot deposit negative or zero amount: {0}")
+        deposit(first);
+        verifyBalance(first);
+
+        deposit(second);
+        verifyBalance(first + second);
+    }
+
+    // ================= ALL NEGATIVE TESTS (8 проверок) =================
+
+    @ParameterizedTest
     @ValueSource(doubles = {0.0, -0.01, -100.0, -999.99})
-    public void cannotDepositNegativeOrZeroAmount(double invalidAmount) {
-        DepositMoneyRequest depositRequest = DepositMoneyRequest.builder()
-                .id(accountId.longValue())
-                .balance(invalidAmount)
-                .build();
-
-        // Ожидаем ошибку BAD_REQUEST
-        new DepositRequester(
-                RequestSpecs.authSpec(authToken),
-                ResponseSpecs.badRequest())
-                .post(depositRequest);
-
-        // Проверяем что баланс не изменился (остался 0.0)
+    void cannotDepositNegativeOrZeroAmount(double amount) {
         given()
                 .spec(RequestSpecs.authSpec(authToken))
-                .when()
-                .get("/api/v1/accounts/" + accountId)
+                .body(DepositMoneyRequest.builder()
+                        .id(accountId.longValue())
+                        .balance(amount)
+                        .build())
+                .post(Endpoints.DEPOSIT)
                 .then()
-                .spec(ResponseSpecs.requestReturnsOK())
-                .body("balance", equalTo(0.0f));
+                .spec(ResponseSpecs.badRequest());
+
+        verifyBalance(0.0);
     }
 
-    @ParameterizedTest(name = "Cannot deposit above limit {0}")
+    @ParameterizedTest
     @ValueSource(doubles = {5000.01, 5000.1, 6000.0, 10000.0})
-    public void cannotDepositAboveLimit(double amountAboveLimit) {
-        DepositMoneyRequest depositRequest = DepositMoneyRequest.builder()
-                .id(accountId.longValue())
-                .balance(amountAboveLimit)
-                .build();
-
-        // Ожидаем ошибку BAD_REQUEST
-        new DepositRequester(
-                RequestSpecs.authSpec(authToken),
-                ResponseSpecs.badRequest())
-                .post(depositRequest);
-
-        // Проверяем что баланс не изменился
+    void cannotDepositAboveLimit(double amount) {
         given()
                 .spec(RequestSpecs.authSpec(authToken))
-                .when()
-                .get("/api/v1/accounts/" + accountId)
+                .body(DepositMoneyRequest.builder()
+                        .id(accountId.longValue())
+                        .balance(amount)
+                        .build())
+                .post(Endpoints.DEPOSIT)
                 .then()
-                .spec(ResponseSpecs.requestReturnsOK())
-                .body("balance", equalTo(0.0f));
+                .spec(ResponseSpecs.badRequest());
+
+        verifyBalance(0.0);
     }
 
-    // ================= EDGE CASES =================
+    // ================= HELPER METHODS =================
 
-    @Test
-    public void multipleDepositsUpdateBalanceCorrectly() {
-        // Первый депозит
-        double firstDeposit = 1000.0;
-        DepositMoneyRequest firstRequest = DepositMoneyRequest.builder()
-                .id(accountId.longValue())
-                .balance(firstDeposit)
-                .build();
-
-        new DepositRequester(
-                RequestSpecs.authSpec(authToken),
-                ResponseSpecs.balanceWasUpdated())
-                .post(firstRequest);
-
-        // Проверяем первый депозит
+    private void deposit(double amount) {
         given()
                 .spec(RequestSpecs.authSpec(authToken))
-                .when()
-                .get("/api/v1/accounts/" + accountId)
+                .body(DepositMoneyRequest.builder()
+                        .id(accountId.longValue())
+                        .balance(amount)
+                        .build())
+                .post(Endpoints.DEPOSIT)
                 .then()
-                .spec(ResponseSpecs.requestReturnsOK())
-                .body("balance", equalTo((float) firstDeposit));
-
-        // Второй депозит
-        double secondDeposit = 500.0;
-        DepositMoneyRequest secondRequest = DepositMoneyRequest.builder()
-                .id(accountId.longValue())
-                .balance(secondDeposit)
-                .build();
-
-        new DepositRequester(
-                RequestSpecs.authSpec(authToken),
-                ResponseSpecs.balanceWasUpdated())
-                .post(secondRequest);
-
-        // Проверяем суммарный баланс
-        given()
-                .spec(RequestSpecs.authSpec(authToken))
-                .when()
-                .get("/api/v1/accounts/" + accountId)
-                .then()
-                .spec(ResponseSpecs.requestReturnsOK())
-                .body("balance", equalTo((float) (firstDeposit + secondDeposit)));
+                .spec(ResponseSpecs.balanceWasUpdated());
     }
 
-    @Test
-    public void depositUpdatesBalanceCorrectlyWithRandomAmounts() {
-        // Генерируем 3 случайных депозита
-        double totalDeposited = 0.0;
-
-        for (int i = 0; i < 3; i++) {
-            double depositAmount = 10.0 + RANDOM.nextDouble() * 990.0; // 10-1000
-            depositAmount = Math.round(depositAmount * 100.0) / 100.0;
-            totalDeposited += depositAmount;
-
-            // Проверяем что не превысим лимит
-            if (totalDeposited > MAX_DEPOSIT_LIMIT) {
-                break;
-            }
-
-            DepositMoneyRequest depositRequest = DepositMoneyRequest.builder()
-                    .id(accountId.longValue())
-                    .balance(depositAmount)
-                    .build();
-
-            new DepositRequester(
-                    RequestSpecs.authSpec(authToken),
-                    ResponseSpecs.balanceWasUpdated())
-                    .post(depositRequest);
-        }
-
-        // Проверяем итоговый баланс
+    private void verifyBalance(double expected) {
         given()
                 .spec(RequestSpecs.authSpec(authToken))
-                .when()
-                .get("/api/v1/accounts/" + accountId)
+                .get(Endpoints.accountById(accountId))
                 .then()
                 .spec(ResponseSpecs.requestReturnsOK())
-                .body("balance", equalTo((float) totalDeposited));
+                .body("balance", equalTo((float) expected));
     }
 }
