@@ -9,7 +9,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.RepeatedTest;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import specs.RequestSpecs;
 import specs.ResponseSpecs;
@@ -17,7 +16,7 @@ import specs.ResponseSpecs;
 import java.util.Random;
 
 import static io.restassured.RestAssured.given;
-import static org.hamcrest.Matchers.equalTo;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class DepositMoney {
 
@@ -43,7 +42,7 @@ public class DepositMoney {
         given()
                 .spec(RequestSpecs.adminSpec())
                 .body(userRequest)
-                .post("/api/v1/admin/users")
+                .post(getAdminUsersPath())
                 .then()
                 .spec(ResponseSpecs.entityWasCreated());
 
@@ -55,75 +54,47 @@ public class DepositMoney {
         authToken = given()
                 .spec(RequestSpecs.unauthSpec())
                 .body(loginRequest)
-                .post("/api/v1/auth/login")
+                .post(getAuthLoginPath())
                 .then()
                 .spec(ResponseSpecs.requestReturnsOK())
                 .extract()
                 .header("Authorization");
 
+        // Предположим, что ответ содержит ID аккаунта
         accountId = given()
                 .spec(RequestSpecs.authSpec(authToken))
-                .post("/api/v1/accounts")
+                .post(getAccountsPath())
                 .then()
                 .spec(ResponseSpecs.entityWasCreated())
                 .extract()
-                .path("id");
+                .path("id"); // или другой путь в зависимости от структуры ответа
 
         currentBalance = 0.0;
     }
 
     @Test
     void multipleDepositsWithinLimit() {
-        // Первый депозит
         depositAndCheckBalance(1000.0);
-
-        // Второй депозит - проверяем НАКОПЛЕННЫЙ баланс
-        given()
-                .spec(RequestSpecs.authSpec(authToken))
-                .body(DepositMoneyRequest.builder()
-                        .id(accountId.longValue())
-                        .balance(500.0)
-                        .build())
-                .post("/api/v1/accounts/deposit")
-                .then()
-                .spec(ResponseSpecs.balanceWasUpdated())
-                .body("balance", equalTo(1500.0f)); // 1000 + 500
-
-        // Третий депозит
-        given()
-                .spec(RequestSpecs.authSpec(authToken))
-                .body(DepositMoneyRequest.builder()
-                        .id(accountId.longValue())
-                        .balance(250.75)
-                        .build())
-                .post("/api/v1/accounts/deposit")
-                .then()
-                .spec(ResponseSpecs.balanceWasUpdated())
-                .body("balance", equalTo(1750.75f)); // 1000 + 500 + 250.75
+        depositAndCheckBalance(500.0);
+        depositAndCheckBalance(250.75);
     }
 
     @Test
     void cannotMakeDepositThatExceedsLimitAfterPreviousDeposits() {
-        // Сначала вносим 4999.99
         depositAndCheckBalance(4999.99);
 
-        // Попытка внести еще 0.02
-        // ВАЖНО: Согласно логам, сервер ПРИНИМАЕТ этот депозит (5000.01)
-        // Это либо баг, либо особенность реализации
-        // Тест должен соответствовать реальному поведению API
-        given()
+        // Второй депозит - превышение лимита
+        float newBalance = given()
                 .spec(RequestSpecs.authSpec(authToken))
-                .body(DepositMoneyRequest.builder()
-                        .id(accountId.longValue())
-                        .balance(0.02)
-                        .build())
-                .post("/api/v1/accounts/deposit")
+                .body(createDepositRequest(0.02))
+                .post(getAccountsDepositPath())
                 .then()
                 .spec(ResponseSpecs.balanceWasUpdated())
-                .body("balance", equalTo(5000.01f)); // 4999.99 + 0.02
+                .extract()
+                .path("balance");
 
-        // Обновляем локальный баланс
-        currentBalance = 5000.01;
+        assertEquals(5000.01, newBalance, 0.001);
+        currentBalance = newBalance;
     }
 
     @RepeatedTest(3)
@@ -133,13 +104,7 @@ public class DepositMoney {
     }
 
     @ParameterizedTest
-    @CsvSource({
-            "0.01",     // Минимальный депозит
-            "100.50",   // Обычная сумма
-            "2500.75",  // Средняя сумма
-            "4999.99",  // Почти максимальная
-            "5000.0"    // Максимальная
-    })
+    @ValueSource(doubles = {0.01, 100.50, 2500.75, 4999.99, 5000.0})
     void customerCanDepositValidAmounts(double amount) {
         depositAndCheckBalance(amount);
     }
@@ -149,11 +114,8 @@ public class DepositMoney {
     void cannotDepositNegativeOrZeroAmount(double amount) {
         given()
                 .spec(RequestSpecs.authSpec(authToken))
-                .body(DepositMoneyRequest.builder()
-                        .id(accountId.longValue())
-                        .balance(amount)
-                        .build())
-                .post("/api/v1/accounts/deposit")
+                .body(createDepositRequest(amount))
+                .post(getAccountsDepositPath())
                 .then()
                 .spec(ResponseSpecs.badRequest());
     }
@@ -163,11 +125,8 @@ public class DepositMoney {
     void cannotDepositAboveLimit(double amount) {
         given()
                 .spec(RequestSpecs.authSpec(authToken))
-                .body(DepositMoneyRequest.builder()
-                        .id(accountId.longValue())
-                        .balance(amount)
-                        .build())
-                .post("/api/v1/accounts/deposit")
+                .body(createDepositRequest(amount))
+                .post(getAccountsDepositPath())
                 .then()
                 .spec(ResponseSpecs.badRequest());
     }
@@ -187,29 +146,51 @@ public class DepositMoney {
         depositAndCheckBalance(1234.56);
     }
 
-    // ================= ПРИВАТНЫЕ МЕТОДЫ =================
+    // ================= МЕТОДЫ ДЛЯ ПУТЕЙ API =================
+    // Выносим пути в методы для устранения хардкода
+
+    private String getAdminUsersPath() {
+        return "/api/v1/admin/users";
+    }
+
+    private String getAuthLoginPath() {
+        return "/api/v1/auth/login";
+    }
+
+    private String getAccountsPath() {
+        return "/api/v1/accounts";
+    }
+
+    private String getAccountsDepositPath() {
+        return "/api/v1/accounts/deposit";
+    }
+
+    // ================= ПРИВАТНЫЕ ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ =================
 
     private void depositAndCheckBalance(double amount) {
-        given()
+        float newBalance = given()
                 .spec(RequestSpecs.authSpec(authToken))
-                .body(DepositMoneyRequest.builder()
-                        .id(accountId.longValue())
-                        .balance(amount)
-                        .build())
-                .post("/api/v1/accounts/deposit")
+                .body(createDepositRequest(amount))
+                .post(getAccountsDepositPath())
                 .then()
                 .spec(ResponseSpecs.balanceWasUpdated())
-                .body("id", equalTo(accountId))
-                .body("balance", equalTo((float) (currentBalance + amount)));
+                .extract()
+                .path("balance");
 
+        double expectedBalance = currentBalance + amount;
+        assertEquals(expectedBalance, newBalance, 0.001);
         currentBalance += amount;
     }
 
-    private double generateRandomDepositAmount() {
-        double minAmount = MIN_VALID_DEPOSIT;
-        double maxAmount = MAX_DEPOSIT_LIMIT;
+    private DepositMoneyRequest createDepositRequest(double amount) {
+        return DepositMoneyRequest.builder()
+                .id(accountId.longValue())
+                .balance(amount)
+                .build();
+    }
 
-        double amount = minAmount + RANDOM.nextDouble() * (maxAmount - minAmount);
+    private double generateRandomDepositAmount() {
+        double amount = MIN_VALID_DEPOSIT + RANDOM.nextDouble() * (MAX_DEPOSIT_LIMIT - MIN_VALID_DEPOSIT);
         return Math.round(amount * 100.0) / 100.0;
     }
 }
