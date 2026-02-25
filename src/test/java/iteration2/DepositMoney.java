@@ -1,22 +1,23 @@
 package iteration2;
 
 import generators.RandomData;
-import models.CreateUserRequest;
-import models.DepositMoneyRequest;
-import models.LoginUserRequest;
-import models.UserRole;
+import models.*;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.RepeatedTest;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
+import requests.*;
 import specs.RequestSpecs;
 import specs.ResponseSpecs;
 
+import java.util.List;
 import java.util.Random;
+import java.util.stream.Stream;
 
-import static io.restassured.RestAssured.given;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class DepositMoney {
 
@@ -26,7 +27,6 @@ public class DepositMoney {
 
     private String authToken;
     private Integer accountId;
-    private double currentBalance = 0.0;
 
     @BeforeEach
     void setup() {
@@ -39,154 +39,200 @@ public class DepositMoney {
                 .role(UserRole.USER.toString())
                 .build();
 
-        given()
-                .spec(RequestSpecs.adminSpec())
-                .body(userRequest)
-                .post(getAdminUsersPath())
-                .then()
-                .spec(ResponseSpecs.entityWasCreated());
+        new AdminCreateUserRequester(
+                RequestSpecs.adminSpec(),
+                ResponseSpecs.entityWasCreated()
+        ).post(userRequest);
 
         LoginUserRequest loginRequest = LoginUserRequest.builder()
                 .username(username)
                 .password(password)
                 .build();
 
-        authToken = given()
-                .spec(RequestSpecs.unauthSpec())
-                .body(loginRequest)
-                .post(getAuthLoginPath())
-                .then()
-                .spec(ResponseSpecs.requestReturnsOK())
+        authToken = new LoginUserRequester(
+                RequestSpecs.unauthSpec(),
+                ResponseSpecs.requestReturnsOK()
+        ).post(loginRequest)
                 .extract()
                 .header("Authorization");
 
-        // Предположим, что ответ содержит ID аккаунта
-        accountId = given()
-                .spec(RequestSpecs.authSpec(authToken))
-                .post(getAccountsPath())
-                .then()
-                .spec(ResponseSpecs.entityWasCreated())
+        accountId = new CreateAccountRequester(
+                RequestSpecs.authSpec(authToken),
+                ResponseSpecs.entityWasCreated()
+        ).post()
                 .extract()
-                .path("id"); // или другой путь в зависимости от структуры ответа
+                .path("id");
+    }
 
-        currentBalance = 0.0;
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("multipleDepositsScenarios")
+    void multipleDepositsWithinLimit(String scenarioName, List<Double> deposits, double expectedFinalBalance) {
+        double balanceBefore = getCurrentBalance();
+        double runningExpected = balanceBefore;
+
+        for (int i = 0; i < deposits.size(); i++) {
+            double amount = deposits.get(i);
+            AccountInfoResponse response = executeDeposit(amount);
+
+            runningExpected += amount;
+            assertEquals(runningExpected, response.getBalance(), 0.001,
+                    String.format("Balance mismatch after deposit %d: %.2f", i + 1, amount));
+        }
+
+        assertEquals(expectedFinalBalance, getCurrentBalance(), 0.001,
+                "Final balance verification failed");
+    }
+
+    private static Stream<Arguments> multipleDepositsScenarios() {
+        return Stream.of(
+                Arguments.of("Three deposits", List.of(1000.0, 500.0, 250.75), 1750.75),
+                Arguments.of("Two deposits reaching limit", List.of(0.01, 4999.99), 5000.0),
+                Arguments.of("Four deposits", List.of(100.0, 200.0, 300.0, 400.0), 1000.0)
+        );
     }
 
     @Test
-    void multipleDepositsWithinLimit() {
-        depositAndCheckBalance(1000.0);
-        depositAndCheckBalance(500.0);
-        depositAndCheckBalance(250.75);
-    }
+    void shouldRejectDepositWhenTotalExceedsLimit() {
+        // Given: баланс близок к лимиту
+        executeDeposit(4999.99);
+        double balanceBefore = getCurrentBalance();
 
-    @Test
-    void cannotMakeDepositThatExceedsLimitAfterPreviousDeposits() {
-        depositAndCheckBalance(4999.99);
+        // When: пытаемся внести депозит, который превысит лимит
+        DepositMoneyRequest request = DepositMoneyRequest.builder()
+                .id(accountId.longValue())
+                .balance(0.02)
+                .build();
 
-        // Второй депозит - превышение лимита
-        float newBalance = given()
-                .spec(RequestSpecs.authSpec(authToken))
-                .body(createDepositRequest(0.02))
-                .post(getAccountsDepositPath())
-                .then()
-                .spec(ResponseSpecs.balanceWasUpdated())
+        ErrorResponse errorResponse = new DepositRequester(
+                RequestSpecs.authSpec(authToken),
+                ResponseSpecs.badRequest()
+        ).post(request)
                 .extract()
-                .path("balance");
+                .as(ErrorResponse.class);
 
-        assertEquals(5000.01, newBalance, 0.001);
-        currentBalance = newBalance;
+        // Then: проверяем код ошибки
+        assertEquals("DEPOSIT_LIMIT_EXCEEDED", errorResponse.getCode());
+
+        // Then: проверяем что баланс не изменился
+        double balanceAfter = getCurrentBalance();
+        assertEquals(balanceBefore, balanceAfter, 0.001);
     }
 
     @RepeatedTest(3)
     void repeatedDepositTest() {
         double amount = generateRandomDepositAmount();
-        depositAndCheckBalance(amount);
+        double balanceBefore = getCurrentBalance();
+
+        AccountInfoResponse response = executeDeposit(amount);
+
+        double expectedBalance = balanceBefore + amount;
+        assertEquals(expectedBalance, response.getBalance(), 0.001);
+        assertEquals(expectedBalance, getCurrentBalance(), 0.001);
     }
 
     @ParameterizedTest
-    @ValueSource(doubles = {0.01, 100.50, 2500.75, 4999.99, 5000.0})
-    void customerCanDepositValidAmounts(double amount) {
-        depositAndCheckBalance(amount);
+    @MethodSource("validDepositAmounts")
+    void shouldSuccessfullyDepositValidAmount(double amount) {
+        double balanceBefore = getCurrentBalance();
+
+        AccountInfoResponse response = executeDeposit(amount);
+
+        double expectedBalance = balanceBefore + amount;
+        assertEquals(expectedBalance, response.getBalance(), 0.001);
+        assertEquals(expectedBalance, getCurrentBalance(), 0.001);
+        assertTrue(response.getBalance() <= MAX_DEPOSIT_LIMIT);
+    }
+
+    private static Stream<Arguments> validDepositAmounts() {
+        return Stream.of(
+                Arguments.of(0.01),
+                Arguments.of(100.50),
+                Arguments.of(2500.75),
+                Arguments.of(4999.99)
+        );
     }
 
     @ParameterizedTest
-    @ValueSource(doubles = {0.0, -0.01, -100.0, -999.99})
-    void cannotDepositNegativeOrZeroAmount(double amount) {
-        given()
-                .spec(RequestSpecs.authSpec(authToken))
-                .body(createDepositRequest(amount))
-                .post(getAccountsDepositPath())
-                .then()
-                .spec(ResponseSpecs.badRequest());
+    @MethodSource("invalidDepositAmountsWithExpectedErrors")
+    void shouldRejectInvalidDepositAmount(double amount, String expectedErrorCode) {
+        double balanceBefore = getCurrentBalance();
+
+        DepositMoneyRequest request = DepositMoneyRequest.builder()
+                .id(accountId.longValue())
+                .balance(amount)
+                .build();
+
+        ErrorResponse errorResponse = new DepositRequester(
+                RequestSpecs.authSpec(authToken),
+                ResponseSpecs.badRequest()
+        ).post(request)
+                .extract()
+                .as(ErrorResponse.class);
+
+        assertEquals(expectedErrorCode, errorResponse.getCode());
+
+        // Проверяем что баланс не изменился
+        double balanceAfter = getCurrentBalance();
+        assertEquals(balanceBefore, balanceAfter, 0.001);
     }
 
-    @ParameterizedTest
-    @ValueSource(doubles = {5000.01, 5000.1, 6000.0, 10000.0})
-    void cannotDepositAboveLimit(double amount) {
-        given()
-                .spec(RequestSpecs.authSpec(authToken))
-                .body(createDepositRequest(amount))
-                .post(getAccountsDepositPath())
-                .then()
-                .spec(ResponseSpecs.badRequest());
-    }
-
-    @Test
-    void depositExactMaximumLimit() {
-        depositAndCheckBalance(MAX_DEPOSIT_LIMIT);
-    }
-
-    @Test
-    void depositExactMinimumLimit() {
-        depositAndCheckBalance(MIN_VALID_DEPOSIT);
+    private static Stream<Arguments> invalidDepositAmountsWithExpectedErrors() {
+        return Stream.of(
+                // Негативные и нулевые значения
+                Arguments.of(0.0, "INVALID_AMOUNT"),
+                Arguments.of(-0.01, "INVALID_AMOUNT"),
+                Arguments.of(-100.0, "INVALID_AMOUNT"),
+                Arguments.of(-999.99, "INVALID_AMOUNT"),
+                // Значения выше лимита
+                Arguments.of(5000.01, "DEPOSIT_LIMIT_EXCEEDED"),
+                Arguments.of(5000.1, "DEPOSIT_LIMIT_EXCEEDED"),
+                Arguments.of(6000.0, "DEPOSIT_LIMIT_EXCEEDED"),
+                Arguments.of(10000.0, "DEPOSIT_LIMIT_EXCEEDED")
+        );
     }
 
     @Test
     void depositWithTwoDecimalPlaces() {
-        depositAndCheckBalance(1234.56);
+        double amount = 1234.56;
+        double balanceBefore = getCurrentBalance();
+
+        AccountInfoResponse response = executeDeposit(amount);
+
+        double expectedBalance = balanceBefore + amount;
+        assertEquals(expectedBalance, response.getBalance(), 0.001);
+        assertEquals(expectedBalance, getCurrentBalance(), 0.001);
+
+        // Проверяем точность десятичных знаков
+        String balanceStr = String.valueOf(response.getBalance());
+        int decimalDigits = balanceStr.contains(".") ?
+                balanceStr.split("\\.")[1].length() : 0;
+        assertTrue(decimalDigits <= 2,
+                "Balance has more than 2 decimal places: " + balanceStr);
     }
 
-    // ================= МЕТОДЫ ДЛЯ ПУТЕЙ API =================
-    // Выносим пути в методы для устранения хардкода
-
-    private String getAdminUsersPath() {
-        return "/api/v1/admin/users";
-    }
-
-    private String getAuthLoginPath() {
-        return "/api/v1/auth/login";
-    }
-
-    private String getAccountsPath() {
-        return "/api/v1/accounts";
-    }
-
-    private String getAccountsDepositPath() {
-        return "/api/v1/accounts/deposit";
-    }
-
-    // ================= ПРИВАТНЫЕ ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ =================
-
-    private void depositAndCheckBalance(double amount) {
-        float newBalance = given()
-                .spec(RequestSpecs.authSpec(authToken))
-                .body(createDepositRequest(amount))
-                .post(getAccountsDepositPath())
-                .then()
-                .spec(ResponseSpecs.balanceWasUpdated())
-                .extract()
-                .path("balance");
-
-        double expectedBalance = currentBalance + amount;
-        assertEquals(expectedBalance, newBalance, 0.001);
-        currentBalance += amount;
-    }
-
-    private DepositMoneyRequest createDepositRequest(double amount) {
-        return DepositMoneyRequest.builder()
+    // ================= ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ =================
+    private AccountInfoResponse executeDeposit(double amount) {
+        DepositMoneyRequest request = DepositMoneyRequest.builder()
                 .id(accountId.longValue())
                 .balance(amount)
                 .build();
+
+        return new DepositRequester(
+                RequestSpecs.authSpec(authToken),
+                ResponseSpecs.balanceWasUpdated()
+        ).post(request)
+                .extract()
+                .as(AccountInfoResponse.class);
+    }
+
+    private double getCurrentBalance() {
+        return new AccountRequests(
+                RequestSpecs.authSpec(authToken),
+                ResponseSpecs.requestReturnsOK()
+        ).getAccount(accountId)
+                .extract()
+                .as(AccountInfoResponse.class)
+                .getBalance();
     }
 
     private double generateRandomDepositAmount() {
