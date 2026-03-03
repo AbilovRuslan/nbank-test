@@ -3,339 +3,269 @@ package iteration2;
 import io.restassured.RestAssured;
 import io.restassured.filter.log.RequestLoggingFilter;
 import io.restassured.filter.log.ResponseLoggingFilter;
-import io.restassured.http.ContentType;
-import org.apache.http.HttpStatus;
-import org.hamcrest.Matchers;
-import org.junit.jupiter.api.BeforeAll;
+import io.restassured.specification.RequestSpecification;
+import generators.RandomData;
+import models.CreateUserRequest;
+import models.LoginUserRequest;
+import models.UserRole;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+import specs.RequestSpecs;
+import specs.ResponseSpecs;
+import utils.ApiPaths;
 
-import java.util.List;
+import java.util.Map;
 
 import static io.restassured.RestAssured.given;
+import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.not;
 
 public class UsernameUpdate {
 
-    @BeforeAll
-    public static void setup() {
-        RestAssured.filters(
-                List.of(new RequestLoggingFilter(),
-                        new ResponseLoggingFilter()));
+    // Константы для тестовых данных
+    private static final String VALID_NAME_TWO_WORDS = "Ivan Ivanov";
+    private static final String VALID_NAME_WITH_MIDDLE = "Anna Maria";
+    private static final String VALID_NAME_ENGLISH = "John Doe";
+
+    private static final String INVALID_NAME_ONE_WORD = "Ivan";
+    private static final String INVALID_NAME_THREE_WORDS = "Ivan Ivanov Petrovich";
+    private static final String INVALID_NAME_SPACES = "   ";
+    private static final String INVALID_NAME_EMPTY = "";
+    private static final String INVALID_NAME_SPECIAL_CHARS = "Ivan@ Ivanov";
+    private static final String INVALID_NAME_NUMBERS = "Ivan 123";
+
+    // HTTP статусы
+    private static final int STATUS_OK = 200;
+    private static final int STATUS_BAD_REQUEST = 400;
+    private static final int STATUS_UNAUTHORIZED = 401;
+
+    // Конфигурация
+    private static final String BASE_URI_PROPERTY = "test.base.uri";
+    private static final String DEFAULT_BASE_URI = "http://localhost:4111";
+
+    private static RequestSpecification customerAuthSpec;
+    private static String testUsername;
+    private static String testPassword;
+
+    @BeforeEach
+    public void setup() {
+        // Без хардкода - через системную переменную
+        RestAssured.baseURI = getBaseUri();
+        RestAssured.filters(new RequestLoggingFilter(), new ResponseLoggingFilter());
+
+        createTestCustomer();
     }
+
+    private String getBaseUri() {
+        return System.getProperty(BASE_URI_PROPERTY, DEFAULT_BASE_URI);
+    }
+
+    private void createTestCustomer() {
+        // Генерация username и password через RandomData
+        testUsername = RandomData.getUsername();
+        testPassword = RandomData.getPassword();
+
+        CreateUserRequest userRequest = CreateUserRequest.builder()
+                .username(testUsername)
+                .password(testPassword)
+                .role(UserRole.USER.toString())
+                .build();
+
+        // Создание пользователя - путь из ApiPaths
+        given()
+                .spec(RequestSpecs.adminSpec())
+                .body(userRequest)
+                .post(ApiPaths.Admin.CREATE_USER)
+                .then()
+                .spec(ResponseSpecs.entityWasCreated());
+
+        LoginUserRequest loginRequest = LoginUserRequest.builder()
+                .username(testUsername)
+                .password(testPassword)
+                .build();
+
+        // Авторизация - путь из ApiPaths
+        String token = given()
+                .spec(RequestSpecs.unauthSpec())
+                .body(loginRequest)
+                .post(ApiPaths.Auth.LOGIN)
+                .then()
+                .spec(ResponseSpecs.requestReturnsOK())
+                .extract()
+                .header(ResponseSpecs.AUTHORIZATION_HEADER);
+
+        customerAuthSpec = RequestSpecs.authSpec(token);
+
+        // Проверка доступа к профилю - путь из ApiPaths
+        given()
+                .spec(customerAuthSpec)
+                .get(ApiPaths.Customer.PROFILE)
+                .then()
+                .statusCode(STATUS_OK);
+    }
+
+    // ================= HELPER METHODS =================
+
+    private String getCurrentCustomerName() {
+        return given()
+                .spec(customerAuthSpec)
+                .get(ApiPaths.Customer.PROFILE)
+                .then()
+                .statusCode(STATUS_OK)
+                .extract()
+                .path("name");
+    }
+
+    private void updateCustomerName(String newName, int expectedStatus) {
+        given()
+                .spec(customerAuthSpec)
+                .body(Map.of("name", newName))
+                .put(ApiPaths.Customer.PROFILE)
+                .then()
+                .statusCode(expectedStatus);
+    }
+
+    // ================= POSITIVE TESTS =================
 
     @Test
     public void customerCanUpdateOwnNameWithTwoWords() {
-        // ДОБАВИЛ: Проверяем имя ДО обновления
-        given()
-                .contentType(ContentType.JSON)
-                .accept(ContentType.JSON)
-                .header("Authorization", "Basic a2F0ZTIwMDAxMTpLYXRlMjAwMCMh")
-                .get("http://localhost:4111/api/v1/customer/profile")
-                .then()
-                .assertThat()
-                .statusCode(HttpStatus.SC_OK)
-                .body("customer.name", Matchers.notNullValue()); // Проверяем, что имя существует (не null)
+        String oldName = getCurrentCustomerName();
 
-        // Существующий код обновления
-        given()
-                .contentType(ContentType.JSON)
-                .accept(ContentType.JSON)
-                .header("Authorization", "Basic a2F0ZTIwMDAxMTpLYXRlMjAwMCMh")
-                .body("{\"name\":\"Ivan Ivanov\"}")
-                .put("http://localhost:4111/api/v1/customer/profile")
-                .then()
-                .assertThat()
-                .statusCode(HttpStatus.SC_OK)
-                .body("customer.name", Matchers.equalTo("Ivan Ivanov"));
+        updateCustomerName(VALID_NAME_TWO_WORDS, STATUS_OK);
 
-        // ДОБАВИЛ: Проверяем имя ПОСЛЕ обновления через GET
+        // Проверка: имя реально поменялось
         given()
-                .contentType(ContentType.JSON)
-                .accept(ContentType.JSON)
-                .header("Authorization", "Basic a2F0ZTIwMDAxMTpLYXRlMjAwMCMh")
-                .get("http://localhost:4111/api/v1/customer/profile")
+                .spec(customerAuthSpec)
+                .get(ApiPaths.Customer.PROFILE)
                 .then()
-                .assertThat()
-                .statusCode(HttpStatus.SC_OK)
-                .body("customer.name", Matchers.equalTo("Ivan Ivanov"));
+                .statusCode(STATUS_OK)
+                .body("name", equalTo(VALID_NAME_TWO_WORDS))
+                .body("name", not(equalTo(oldName)));
     }
+
+    @ParameterizedTest
+    @ValueSource(strings = {VALID_NAME_TWO_WORDS, VALID_NAME_WITH_MIDDLE, VALID_NAME_ENGLISH})
+    public void canUpdateNameWithDifferentTwoWordFormats(String name) {
+        String oldName = getCurrentCustomerName();
+
+        updateCustomerName(name, STATUS_OK);
+
+        given()
+                .spec(customerAuthSpec)
+                .get(ApiPaths.Customer.PROFILE)
+                .then()
+                .statusCode(STATUS_OK)
+                .body("name", equalTo(name))
+                .body("name", not(equalTo(oldName)));
+    }
+
+    // ================= NEGATIVE TESTS =================
 
     @Test
     public void cannotUpdateNameWithOneWord() {
-        // ДОБАВИЛ: Проверяем имя ДО обновления
-        given()
-                .contentType(ContentType.JSON)
-                .accept(ContentType.JSON)
-                .header("Authorization", "Basic a2F0ZTIwMDAxMTpLYXRlMjAwMCMh")
-                .get("http://localhost:4111/api/v1/customer/profile")
-                .then()
-                .assertThat()
-                .statusCode(HttpStatus.SC_OK)
-                .body("customer.name", Matchers.notNullValue());
+        String oldName = getCurrentCustomerName();
 
-        given()
-                .contentType(ContentType.JSON)
-                .accept(ContentType.JSON)
-                .header("Authorization", "Basic a2F0ZTIwMDAxMTpLYXRlMjAwMCMh")
-                .body("{\"name\":\"Ivan\"}")
-                .put("http://localhost:4111/api/v1/customer/profile")
-                .then()
-                .assertThat()
-                .statusCode(HttpStatus.SC_BAD_REQUEST);
+        updateCustomerName(INVALID_NAME_ONE_WORD, STATUS_BAD_REQUEST);
 
-        // ДОБАВИЛ: Проверяем имя ПОСЛЕ неудачного обновления через GET
+        // Проверка: имя не изменилось
         given()
-                .contentType(ContentType.JSON)
-                .accept(ContentType.JSON)
-                .header("Authorization", "Basic a2F0ZTIwMDAxMTpLYXRlMjAwMCMh")
-                .get("http://localhost:4111/api/v1/customer/profile")
+                .spec(customerAuthSpec)
+                .get(ApiPaths.Customer.PROFILE)
                 .then()
-                .assertThat()
-                .statusCode(HttpStatus.SC_OK)
-                .body("customer.name", Matchers.not(Matchers.equalTo("Ivan"))); // Имя не должно быть "Ivan"
+                .statusCode(STATUS_OK)
+                .body("name", equalTo(oldName));
     }
 
     @Test
     public void cannotUpdateNameWithThreeWords() {
-        // ДОБАВИЛ: Проверяем имя ДО обновления
-        given()
-                .contentType(ContentType.JSON)
-                .accept(ContentType.JSON)
-                .header("Authorization", "Basic a2F0ZTIwMDAxMTpLYXRlMjAwMCMh")
-                .get("http://localhost:4111/api/v1/customer/profile")
-                .then()
-                .assertThat()
-                .statusCode(HttpStatus.SC_OK)
-                .body("customer.name", Matchers.notNullValue());
+        String oldName = getCurrentCustomerName();
+
+        updateCustomerName(INVALID_NAME_THREE_WORDS, STATUS_BAD_REQUEST);
 
         given()
-                .contentType(ContentType.JSON)
-                .accept(ContentType.JSON)
-                .header("Authorization", "Basic a2F0ZTIwMDAxMTpLYXRlMjAwMCMh")
-                .body("{\"name\":\"Ivan Ivanov Petrovich\"}")
-                .put("http://localhost:4111/api/v1/customer/profile")
+                .spec(customerAuthSpec)
+                .get(ApiPaths.Customer.PROFILE)
                 .then()
-                .assertThat()
-                .statusCode(HttpStatus.SC_BAD_REQUEST);
-
-        // ДОБАВИЛ: Проверяем имя ПОСЛЕ неудачного обновления через GET
-        given()
-                .contentType(ContentType.JSON)
-                .accept(ContentType.JSON)
-                .header("Authorization", "Basic a2F0ZTIwMDAxMTpLYXRlMjAwMCMh")
-                .get("http://localhost:4111/api/v1/customer/profile")
-                .then()
-                .assertThat()
-                .statusCode(HttpStatus.SC_OK)
-                .body("customer.name", Matchers.not(Matchers.equalTo("Ivan Ivanov Petrovich"))); // Имя не должно быть изменено
+                .statusCode(STATUS_OK)
+                .body("name", equalTo(oldName));
     }
 
     @Test
     public void cannotUpdateNameWithOnlySpaces() {
-        //  ДОБАВИЛ: Проверяем имя ДО обновления
-        given()
-                .contentType(ContentType.JSON)
-                .accept(ContentType.JSON)
-                .header("Authorization", "Basic a2F0ZTIwMDAxMTpLYXRlMjAwMCMh")
-                .get("http://localhost:4111/api/v1/customer/profile")
-                .then()
-                .assertThat()
-                .statusCode(HttpStatus.SC_OK)
-                .body("customer.name", Matchers.notNullValue());
+        String oldName = getCurrentCustomerName();
+
+        updateCustomerName(INVALID_NAME_SPACES, STATUS_BAD_REQUEST);
 
         given()
-                .contentType(ContentType.JSON)
-                .accept(ContentType.JSON)
-                .header("Authorization", "Basic a2F0ZTIwMDAxMTpLYXRlMjAwMCMh")
-                .body("{\"name\":\"  \"}")
-                .put("http://localhost:4111/api/v1/customer/profile")
+                .spec(customerAuthSpec)
+                .get(ApiPaths.Customer.PROFILE)
                 .then()
-                .assertThat()
-                .statusCode(HttpStatus.SC_BAD_REQUEST);
-
-        // ДОБАВИЛ: Проверяем имя ПОСЛЕ неудачного обновления через GET
-        given()
-                .contentType(ContentType.JSON)
-                .accept(ContentType.JSON)
-                .header("Authorization", "Basic a2F0ZTIwMDAxMTpLYXRlMjAwMCMh")
-                .get("http://localhost:4111/api/v1/customer/profile")
-                .then()
-                .assertThat()
-                .statusCode(HttpStatus.SC_OK)
-                .body("customer.name", Matchers.not(Matchers.equalTo("  "))); // Имя не должно состоять только из пробелов
+                .statusCode(STATUS_OK)
+                .body("name", equalTo(oldName));
     }
 
     @Test
     public void cannotUpdateNameWithEmptyString() {
-        // ДОБАВИЛ: Проверяем имя ДО обновления
-        given()
-                .contentType(ContentType.JSON)
-                .accept(ContentType.JSON)
-                .header("Authorization", "Basic a2F0ZTIwMDAxMTpLYXRlMjAwMCMh")
-                .get("http://localhost:4111/api/v1/customer/profile")
-                .then()
-                .assertThat()
-                .statusCode(HttpStatus.SC_OK)
-                .body("customer.name", Matchers.notNullValue());
+        String oldName = getCurrentCustomerName();
+
+        updateCustomerName(INVALID_NAME_EMPTY, STATUS_BAD_REQUEST);
 
         given()
-                .contentType(ContentType.JSON)
-                .accept(ContentType.JSON)
-                .header("Authorization", "Basic a2F0ZTIwMDAxMTpLYXRlMjAwMCMh")
-                .body("{\"name\":\"\"}")
-                .put("http://localhost:4111/api/v1/customer/profile")
+                .spec(customerAuthSpec)
+                .get(ApiPaths.Customer.PROFILE)
                 .then()
-                .assertThat()
-                .statusCode(HttpStatus.SC_BAD_REQUEST);
-
-        // ДОБАВИЛ: Проверяем имя ПОСЛЕ неудачного обновления через GET
-        given()
-                .contentType(ContentType.JSON)
-                .accept(ContentType.JSON)
-                .header("Authorization", "Basic a2F0ZTIwMDAxMTpLYXRlMjAwMCMh")
-                .get("http://localhost:4111/api/v1/customer/profile")
-                .then()
-                .assertThat()
-                .statusCode(HttpStatus.SC_OK)
-                .body("customer.name", Matchers.not(Matchers.isEmptyOrNullString())); // Имя не должно быть пустым
+                .statusCode(STATUS_OK)
+                .body("name", equalTo(oldName));
     }
 
     @Test
     public void cannotUpdateNameWithSpecialCharacters() {
-        // ДОБАВИЛ: Проверяем имя ДО обновления
-        given()
-                .contentType(ContentType.JSON)
-                .accept(ContentType.JSON)
-                .header("Authorization", "Basic a2F0ZTIwMDAxMTpLYXRlMjAwMCMh")
-                .get("http://localhost:4111/api/v1/customer/profile")
-                .then()
-                .assertThat()
-                .statusCode(HttpStatus.SC_OK)
-                .body("customer.name", Matchers.notNullValue());
+        String oldName = getCurrentCustomerName();
+
+        updateCustomerName(INVALID_NAME_SPECIAL_CHARS, STATUS_BAD_REQUEST);
 
         given()
-                .contentType(ContentType.JSON)
-                .accept(ContentType.JSON)
-                .header("Authorization", "Basic a2F0ZTIwMDAxMTpLYXRlMjAwMCMh")
-                .body("{\"name\":\"Ivan@ Ivanov\"}")
-                .put("http://localhost:4111/api/v1/customer/profile")
+                .spec(customerAuthSpec)
+                .get(ApiPaths.Customer.PROFILE)
                 .then()
-                .assertThat()
-                .statusCode(HttpStatus.SC_BAD_REQUEST);
-
-        // ДОБАВИЛ: Проверяем имя ПОСЛЕ неудачного обновления через GET
-        given()
-                .contentType(ContentType.JSON)
-                .accept(ContentType.JSON)
-                .header("Authorization", "Basic a2F0ZTIwMDAxMTpLYXRlMjAwMCMh")
-                .get("http://localhost:4111/api/v1/customer/profile")
-                .then()
-                .assertThat()
-                .statusCode(HttpStatus.SC_OK)
-                .body("customer.name", Matchers.not(Matchers.equalTo("Ivan@ Ivanov"))); // Имя не должно содержать специальные символы
-    }
-
-    @Test
-    public void canUpdateNameWithDifferentTwoWordFormats() {
-        // Проверяем разные варианты двух слов
-        // ДОБАВИЛ: Проверяем имя ДО первого обновления
-        given()
-                .contentType(ContentType.JSON)
-                .accept(ContentType.JSON)
-                .header("Authorization", "Basic a2F0ZTIwMDAxMTpLYXRlMjAwMCMh")
-                .get("http://localhost:4111/api/v1/customer/profile")
-                .then()
-                .assertThat()
-                .statusCode(HttpStatus.SC_OK)
-                .body("customer.name", Matchers.notNullValue());
-
-        given()
-                .contentType(ContentType.JSON)
-                .accept(ContentType.JSON)
-                .header("Authorization", "Basic a2F0ZTIwMDAxMTpLYXRlMjAwMCMh")
-                .body("{\"name\":\"John Doe\"}")
-                .put("http://localhost:4111/api/v1/customer/profile")
-                .then()
-                .assertThat()
-                .statusCode(HttpStatus.SC_OK)
-                .body("customer.name", Matchers.equalTo("John Doe"));
-
-        // ДОБАВИЛ: Проверяем имя ПОСЛЕ первого обновления через GET
-        given()
-                .contentType(ContentType.JSON)
-                .accept(ContentType.JSON)
-                .header("Authorization", "Basic a2F0ZTIwMDAxMTpLYXRlMjAwMCMh")
-                .get("http://localhost:4111/api/v1/customer/profile")
-                .then()
-                .assertThat()
-                .statusCode(HttpStatus.SC_OK)
-                .body("customer.name", Matchers.equalTo("John Doe"));
-
-        // ДОБАВИЛ: Проверяем имя ДО второго обновления
-        given()
-                .contentType(ContentType.JSON)
-                .accept(ContentType.JSON)
-                .header("Authorization", "Basic a2F0ZTIwMDAxMTpLYXRlMjAwMCMh")
-                .get("http://localhost:4111/api/v1/customer/profile")
-                .then()
-                .assertThat()
-                .statusCode(HttpStatus.SC_OK)
-                .body("customer.name", Matchers.equalTo("John Doe")); // Должно быть предыдущее значение
-
-        given()
-                .contentType(ContentType.JSON)
-                .accept(ContentType.JSON)
-                .header("Authorization", "Basic a2F0ZTIwMDAxMTpLYXRlMjAwMCMh")
-                .body("{\"name\":\"Anna-Maria Schmidt\"}")
-                .put("http://localhost:4111/api/v1/customer/profile")
-                .then()
-                .assertThat()
-                .statusCode(HttpStatus.SC_OK)
-                .body("customer.name", Matchers.equalTo("Anna-Maria Schmidt"));
-
-        // ДОБАВИЛ: Проверяем имя ПОСЛЕ второго обновления через GET
-        given()
-                .contentType(ContentType.JSON)
-                .accept(ContentType.JSON)
-                .header("Authorization", "Basic a2F0ZTIwMDAxMTpLYXRlMjAwMCMh")
-                .get("http://localhost:4111/api/v1/customer/profile")
-                .then()
-                .assertThat()
-                .statusCode(HttpStatus.SC_OK)
-                .body("customer.name", Matchers.equalTo("Anna-Maria Schmidt"));
+                .statusCode(STATUS_OK)
+                .body("name", equalTo(oldName));
     }
 
     @Test
     public void cannotUpdateNameWithNumbers() {
-        //  ДОБАВИЛ: Проверяем имя ДО обновления
-        given()
-                .contentType(ContentType.JSON)
-                .accept(ContentType.JSON)
-                .header("Authorization", "Basic a2F0ZTIwMDAxMTpLYXRlMjAwMCMh")
-                .get("http://localhost:4111/api/v1/customer/profile")
-                .then()
-                .assertThat()
-                .statusCode(HttpStatus.SC_OK)
-                .body("customer.name", Matchers.notNullValue());
+        String oldName = getCurrentCustomerName();
+
+        updateCustomerName(INVALID_NAME_NUMBERS, STATUS_BAD_REQUEST);
 
         given()
-                .contentType(ContentType.JSON)
-                .accept(ContentType.JSON)
-                .header("Authorization", "Basic a2F0ZTIwMDAxMTpLYXRlMjAwMCMh")
-                .body("{\"name\":\"Ivan 123\"}")
-                .put("http://localhost:4111/api/v1/customer/profile")
+                .spec(customerAuthSpec)
+                .get(ApiPaths.Customer.PROFILE)
                 .then()
-                .assertThat()
-                .statusCode(HttpStatus.SC_BAD_REQUEST);
+                .statusCode(STATUS_OK)
+                .body("name", equalTo(oldName));
+    }
 
-        // ДОБАВИЛ: Проверяем имя ПОСЛЕ неудачного обновления через GET
+    // ================= EDGE CASE =================
+
+    @Test
+    public void testCustomerProfileAccess() {
         given()
-                .contentType(ContentType.JSON)
-                .accept(ContentType.JSON)
-                .header("Authorization", "Basic a2F0ZTIwMDAxMTpLYXRlMjAwMCMh")
-                .get("http://localhost:4111/api/v1/customer/profile")
+                .spec(customerAuthSpec)
+                .get(ApiPaths.Customer.PROFILE)
                 .then()
-                .assertThat()
-                .statusCode(HttpStatus.SC_OK)
-                .body("customer.name", Matchers.not(Matchers.equalTo("Ivan 123"))); // Имя не должно содержать цифры
+                .statusCode(STATUS_OK)
+                .log().body();
+    }
+
+    @Test
+    public void getProfileUnauthorized() {
+        given()
+                .spec(RequestSpecs.unauthSpec())
+                .get(ApiPaths.Customer.PROFILE)
+                .then()
+                .statusCode(STATUS_UNAUTHORIZED);
     }
 }
