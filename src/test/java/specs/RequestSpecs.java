@@ -63,23 +63,23 @@ public class RequestSpecs {
 
         String trimmed = authToken.trim();
 
-        // Удаляем все вхождения "Basic " в начале строки
+
         while (trimmed.startsWith("Basic ")) {
             trimmed = trimmed.substring(6).trim();
         }
 
-        // Добавляем "Basic " один раз
+
         return "Basic " + trimmed;
     }
 
-    // Метод для извлечения чистого токена (без "Basic ")
+
     public static String extractTokenFromHeader(String authHeader) {
         if (authHeader == null || authHeader.trim().isEmpty()) {
             return "";
         }
 
         String trimmed = authHeader.trim();
-        // Удаляем все вхождения "Basic " в начале строки
+
         while (trimmed.startsWith("Basic ")) {
             trimmed = trimmed.substring(6).trim();
         }

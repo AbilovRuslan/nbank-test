@@ -4,17 +4,19 @@ POST http://localhost:4111/api/v1/auth/login
 Content-Type: application/json
 
 {
-  "username": "kate1998",
-  "password": "verysTRongPassword33$"
+  "username": "kate19981",
+  "password": "kate19981У№!:$K"
 }
 
 ### Positive test: Admin can create new user with correct data
-POST http://localhost:4111/api/v1/auth/login
+POST http://localhost:4111/api/v1/admin/users
 Content-Type: application/json
+Authorization: Basic YWRtaW46YWRtaW4=
 
 {
-  "username": "kate1998",
-  "password": "verysTRongPassword33$"
+  "username": "kate19981",
+  "password": "kate19981",
+  "role": "USER"
 }
 
 ### Negative test: Admin cannot create new user with blank username
@@ -23,8 +25,8 @@ Content-Type: application/json
 Authorization: Basic YWRtaW46YWRtaW4=
 
 {
-  "username": "  ",
-  "password": "{{$random.uuid}}",
+  "username": "kate199811",
+  "password": "kate19981У№!:$K",
   "role": "USER"
 }
 
@@ -115,48 +117,18 @@ Content-Type: application/json
 Authorization: Basic YWRtaW46YWRtaW4=
 
 {
-  "username": "admin",
-  "password": "admin",
+  "username": "kate1998",
+  "password": "kate1998",
   "role": "USER"
 }
 
 
 ### Positive test: Authorized user can create account
-
 POST http://localhost:4111/api/v1/accounts
 Content-Type: application/json
 Authorization: Basic a2F0ZTE5OTgxOmthdGUxOTk4MQ==
 
-
 ### Positive test: check account was created
 GET http://localhost:4111/api/v1/customer/accounts
 Content-Type: application/json
-Authorization: Basic a2F0ZTE5OTg6dmVyeXNUUm9uZ1Bhc3N3b3JkMzMk
-
-
-### Проверяем роль пользователя kate1998
-GET http://localhost:4111/api/v1/customer/profile
-Authorization: Basic a2F0ZTE5OTg6dmVyeXNUUm9uZ1Bhc3N3b3JkMzMk
-Content-Type: application/json
-
-###
-GET http://localhost:4111/api/v1/customer/profile
-Authorization: Basic a2F0ZTE5OTg6dmVyeXNUUm9uZ1Bhc3N3b3JkMzMk
-Content-Type: application/json
-###
-### 1. Удаляем старого kate1998
-DELETE http://localhost:4111/api/v1/admin/users/kate1998
-Authorization: Basic YWRtaW46YWRtaW4=
-
-###
-
-### 2. Создаём нового kate1998 как АДМИНА
-POST http://localhost:4111/api/v1/admin/users
-Content-Type: application/json
-Authorization: Basic YWRtaW46YWRtaW4=
-
-{
-  "username": "kate1998",
-  "password": "verysTRongPassword33$",
-  "role": "ADMIN"
-}
+Authorization: Basic a2F0ZTE5OTgxOmthdGUxOTk4MQ==

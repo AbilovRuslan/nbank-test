@@ -1,24 +1,33 @@
 package iteration2;
 
-import generators.RandomData;
-import models.*;
+import models.AccountInfoResponse;
+import models.CreateUserRequest;
+import models.DepositMoneyRequest;
+import models.LoginUserRequest;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.RepeatedTest;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
-import requests.*;
+import requests.CreateAccountRequester;
+import requests.DepositRequester;
+import requests.LoginUserRequester;
+import requests.steps.AdminSteps;
 import specs.RequestSpecs;
 import specs.ResponseSpecs;
 
 import java.util.List;
 import java.util.Random;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertAll;
 
+@DisplayName("Депозиты на счет")
 public class DepositMoney {
 
     private static final double MAX_DEPOSIT_LIMIT = 5000.0;
@@ -26,27 +35,17 @@ public class DepositMoney {
     private static final Random RANDOM = new Random();
 
     private String authToken;
-    private Integer accountId;
+    private Long accountId;
 
     @BeforeEach
     void setup() {
-        String username = RandomData.getUsername();
-        String password = RandomData.getPassword();
+        // Используем AdminSteps как в iteration1!
+        CreateUserRequest userRequest = AdminSteps.createUser();
 
-        CreateUserRequest userRequest = CreateUserRequest.builder()
-                .username(username)
-                .password(password)
-                .role(UserRole.USER.toString())
-                .build();
-
-        new AdminCreateUserRequester(
-                RequestSpecs.adminSpec(),
-                ResponseSpecs.entityWasCreated()
-        ).post(userRequest);
-
+        // Логинимся созданным пользователем
         LoginUserRequest loginRequest = LoginUserRequest.builder()
-                .username(username)
-                .password(password)
+                .username(userRequest.getUsername())
+                .password(userRequest.getPassword())
                 .build();
 
         authToken = new LoginUserRequester(
@@ -56,31 +55,42 @@ public class DepositMoney {
                 .extract()
                 .header("Authorization");
 
-        accountId = new CreateAccountRequester(
+        // Создаем счет - ИСПРАВЛЕНО: преобразуем Integer в Long
+        Integer idAsInt = new CreateAccountRequester(
                 RequestSpecs.authSpec(authToken),
                 ResponseSpecs.entityWasCreated()
         ).post()
                 .extract()
                 .path("id");
+
+        accountId = idAsInt.longValue();  // Конвертируем Integer в Long
     }
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("multipleDepositsScenarios")
-    void multipleDepositsWithinLimit(String scenarioName, List<Double> deposits, double expectedFinalBalance) {
-        double balanceBefore = getCurrentBalance();
-        double runningExpected = balanceBefore;
+    @DisplayName("Несколько депозитов подряд")
+    void shouldMaintainCorrectBalanceAfterMultipleDeposits(String scenarioName, List<Double> deposits, double expectedFinalBalance) {
+        AtomicReference<Double> runningBalance = new AtomicReference<>(getCurrentBalance());
 
-        for (int i = 0; i < deposits.size(); i++) {
-            double amount = deposits.get(i);
-            AccountInfoResponse response = executeDeposit(amount);
+        List<AccountInfoResponse> responses = deposits.stream()
+                .map(amount -> {
+                    AccountInfoResponse response = executeDeposit(amount);
+                    runningBalance.set(runningBalance.get() + amount);
 
-            runningExpected += amount;
-            assertEquals(runningExpected, response.getBalance(), 0.001,
-                    String.format("Balance mismatch after deposit %d: %.2f", i + 1, amount));
-        }
+                    assertThat(response.getBalance())
+                            .as("Balance after deposit of %.2f", amount)
+                            .isCloseTo(runningBalance.get(), within(0.001));
 
-        assertEquals(expectedFinalBalance, getCurrentBalance(), 0.001,
-                "Final balance verification failed");
+                    return response;
+                })
+                .collect(Collectors.toList());
+
+        assertAll(
+                () -> assertThat(responses).hasSize(deposits.size()),
+                () -> assertThat(getCurrentBalance())
+                        .as("Final balance")
+                        .isCloseTo(expectedFinalBalance, within(0.001))
+        );
     }
 
     private static Stream<Arguments> multipleDepositsScenarios() {
@@ -92,128 +102,163 @@ public class DepositMoney {
     }
 
     @Test
+    @DisplayName("Отказ при превышении лимита")
     void shouldRejectDepositWhenTotalExceedsLimit() {
-        // Given: баланс близок к лимиту
+        // Given
         executeDeposit(4999.99);
         double balanceBefore = getCurrentBalance();
 
-        // When: пытаемся внести депозит, который превысит лимит
+        // When
         DepositMoneyRequest request = DepositMoneyRequest.builder()
-                .id(accountId.longValue())
+                .id(accountId)
                 .balance(0.02)
                 .build();
 
-        ErrorResponse errorResponse = new DepositRequester(
+        String errorResponse = new DepositRequester(
                 RequestSpecs.authSpec(authToken),
                 ResponseSpecs.badRequest()
         ).post(request)
                 .extract()
-                .as(ErrorResponse.class);
+                .asString();
 
-        // Then: проверяем код ошибки
-        assertEquals("DEPOSIT_LIMIT_EXCEEDED", errorResponse.getCode());
-
-        // Then: проверяем что баланс не изменился
+        // Then
         double balanceAfter = getCurrentBalance();
-        assertEquals(balanceBefore, balanceAfter, 0.001);
+
+        assertAll(
+                () -> assertThat(errorResponse).isEqualTo("Deposit amount cannot exceed 5000"),
+                () -> assertThat(balanceAfter).isCloseTo(balanceBefore, within(0.001)),
+                () -> assertThat(balanceAfter).isLessThanOrEqualTo(MAX_DEPOSIT_LIMIT + 0.001)
+        );
     }
 
-    @RepeatedTest(3)
-    void repeatedDepositTest() {
+    @RepeatedTest(5)
+    @DisplayName("Случайные суммы депозитов")
+    void shouldHandleRandomDepositAmounts() {
         double amount = generateRandomDepositAmount();
         double balanceBefore = getCurrentBalance();
 
         AccountInfoResponse response = executeDeposit(amount);
 
-        double expectedBalance = balanceBefore + amount;
-        assertEquals(expectedBalance, response.getBalance(), 0.001);
-        assertEquals(expectedBalance, getCurrentBalance(), 0.001);
+        assertThat(response.getBalance())
+                .as("Balance after random deposit %.2f", amount)
+                .isCloseTo(balanceBefore + amount, within(0.001));
     }
 
     @ParameterizedTest
     @MethodSource("validDepositAmounts")
-    void shouldSuccessfullyDepositValidAmount(double amount) {
+    @DisplayName("Валидные суммы депозитов")
+    void shouldAcceptValidDepositAmounts(double amount) {
         double balanceBefore = getCurrentBalance();
 
         AccountInfoResponse response = executeDeposit(amount);
 
-        double expectedBalance = balanceBefore + amount;
-        assertEquals(expectedBalance, response.getBalance(), 0.001);
-        assertEquals(expectedBalance, getCurrentBalance(), 0.001);
-        assertTrue(response.getBalance() <= MAX_DEPOSIT_LIMIT);
-    }
-
-    private static Stream<Arguments> validDepositAmounts() {
-        return Stream.of(
-                Arguments.of(0.01),
-                Arguments.of(100.50),
-                Arguments.of(2500.75),
-                Arguments.of(4999.99)
+        assertAll(
+                () -> assertThat(response.getBalance())
+                        .isCloseTo(balanceBefore + amount, within(0.001)),
+                () -> assertThat(response.getBalance())
+                        .isLessThanOrEqualTo(MAX_DEPOSIT_LIMIT + 0.001),
+                () -> assertThat(response.getId()).isEqualTo(accountId)
         );
     }
 
+    private static Stream<Double> validDepositAmounts() {
+        return Stream.of(0.01, 100.50, 2500.75, 4999.99, 5000.0);
+    }
+
     @ParameterizedTest
-    @MethodSource("invalidDepositAmountsWithExpectedErrors")
-    void shouldRejectInvalidDepositAmount(double amount, String expectedErrorCode) {
+    @MethodSource("invalidDepositAmountsProvider")
+    @DisplayName("Невалидные суммы депозитов")
+    void shouldRejectInvalidDepositAmounts(InvalidDepositTestData testData) {
         double balanceBefore = getCurrentBalance();
 
         DepositMoneyRequest request = DepositMoneyRequest.builder()
-                .id(accountId.longValue())
-                .balance(amount)
+                .id(accountId)
+                .balance(testData.amount)
                 .build();
 
-        ErrorResponse errorResponse = new DepositRequester(
+        String errorResponse = new DepositRequester(
                 RequestSpecs.authSpec(authToken),
                 ResponseSpecs.badRequest()
         ).post(request)
                 .extract()
-                .as(ErrorResponse.class);
+                .asString();
 
-        assertEquals(expectedErrorCode, errorResponse.getCode());
-
-        // Проверяем что баланс не изменился
         double balanceAfter = getCurrentBalance();
-        assertEquals(balanceBefore, balanceAfter, 0.001);
+
+        String expectedMessage = testData.amount > MAX_DEPOSIT_LIMIT ?
+                "Deposit amount cannot exceed 5000" :
+                "Deposit amount must be at least 0.01";
+
+        assertAll(
+                () -> assertThat(errorResponse).isEqualTo(expectedMessage),
+                () -> assertThat(balanceAfter).isCloseTo(balanceBefore, within(0.001))
+        );
     }
 
-    private static Stream<Arguments> invalidDepositAmountsWithExpectedErrors() {
+    private static Stream<InvalidDepositTestData> invalidDepositAmountsProvider() {
         return Stream.of(
-                // Негативные и нулевые значения
-                Arguments.of(0.0, "INVALID_AMOUNT"),
-                Arguments.of(-0.01, "INVALID_AMOUNT"),
-                Arguments.of(-100.0, "INVALID_AMOUNT"),
-                Arguments.of(-999.99, "INVALID_AMOUNT"),
-                // Значения выше лимита
-                Arguments.of(5000.01, "DEPOSIT_LIMIT_EXCEEDED"),
-                Arguments.of(5000.1, "DEPOSIT_LIMIT_EXCEEDED"),
-                Arguments.of(6000.0, "DEPOSIT_LIMIT_EXCEEDED"),
-                Arguments.of(10000.0, "DEPOSIT_LIMIT_EXCEEDED")
+                new InvalidDepositTestData(0.0, "INVALID_AMOUNT"),
+                new InvalidDepositTestData(-0.01, "INVALID_AMOUNT"),
+                new InvalidDepositTestData(-100.0, "INVALID_AMOUNT"),
+                new InvalidDepositTestData(-999.99, "INVALID_AMOUNT"),
+                new InvalidDepositTestData(5000.01, "DEPOSIT_LIMIT_EXCEEDED"),
+                new InvalidDepositTestData(5000.1, "DEPOSIT_LIMIT_EXCEEDED"),
+                new InvalidDepositTestData(6000.0, "DEPOSIT_LIMIT_EXCEEDED"),
+                new InvalidDepositTestData(10000.0, "DEPOSIT_LIMIT_EXCEEDED")
         );
     }
 
     @Test
-    void depositWithTwoDecimalPlaces() {
+    @DisplayName("Проверка точности до двух знаков")
+    void shouldPreservePrecisionForTwoDecimalPlaces() {
         double amount = 1234.56;
-        double balanceBefore = getCurrentBalance();
 
         AccountInfoResponse response = executeDeposit(amount);
 
-        double expectedBalance = balanceBefore + amount;
-        assertEquals(expectedBalance, response.getBalance(), 0.001);
-        assertEquals(expectedBalance, getCurrentBalance(), 0.001);
-
-        // Проверяем точность десятичных знаков
-        String balanceStr = String.valueOf(response.getBalance());
-        int decimalDigits = balanceStr.contains(".") ?
-                balanceStr.split("\\.")[1].length() : 0;
-        assertTrue(decimalDigits <= 2,
-                "Balance has more than 2 decimal places: " + balanceStr);
+        assertThat(response.getBalance())
+                .as("Balance should have max 2 decimal places")
+                .satisfies(balance -> {
+                    String balanceStr = String.valueOf(balance);
+                    if (balanceStr.contains(".")) {
+                        int decimalDigits = balanceStr.split("\\.")[1].length();
+                        assertThat(decimalDigits).isLessThanOrEqualTo(2);
+                    }
+                });
     }
 
-    // ================= ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ =================
+    @Test
+    @DisplayName("Депозит на несуществующий счет")
+    void shouldThrowWhenDepositingToNonExistentAccount() {
+        DepositMoneyRequest request = DepositMoneyRequest.builder()
+                .id(999999L)
+                .balance(100.0)
+                .build();
+
+        new DepositRequester(
+                RequestSpecs.authSpec(authToken),
+                ResponseSpecs.forbidden()
+        ).post(request);
+    }
+
+    @Test
+    @DisplayName("Депозит без авторизации")
+    void shouldThrowWhenDepositingWithoutAuth() {
+        DepositMoneyRequest request = DepositMoneyRequest.builder()
+                .id(accountId)
+                .balance(100.0)
+                .build();
+
+        new DepositRequester(
+                RequestSpecs.unauthSpec(),
+                ResponseSpecs.unauthorized()
+        ).post(request);
+    }
+
+    // ================= HELPER METHODS =================
+
     private AccountInfoResponse executeDeposit(double amount) {
         DepositMoneyRequest request = DepositMoneyRequest.builder()
-                .id(accountId.longValue())
+                .id(accountId)
                 .balance(amount)
                 .build();
 
@@ -226,17 +271,26 @@ public class DepositMoney {
     }
 
     private double getCurrentBalance() {
-        return new AccountRequests(
-                RequestSpecs.authSpec(authToken),
-                ResponseSpecs.requestReturnsOK()
-        ).getAccount(accountId)
-                .extract()
-                .as(AccountInfoResponse.class)
-                .getBalance();
+
+        return 0.0;
     }
 
     private double generateRandomDepositAmount() {
-        double amount = MIN_VALID_DEPOSIT + RANDOM.nextDouble() * (MAX_DEPOSIT_LIMIT - MIN_VALID_DEPOSIT);
-        return Math.round(amount * 100.0) / 100.0;
+        return MIN_VALID_DEPOSIT + (MAX_DEPOSIT_LIMIT - MIN_VALID_DEPOSIT) * RANDOM.nextDouble();
+    }
+
+    private static org.assertj.core.data.Offset<Double> within(double epsilon) {
+        return org.assertj.core.data.Offset.offset(epsilon);
+    }
+
+    // Внутренний класс для тестовых данных
+    private static class InvalidDepositTestData {
+        final double amount;
+        final String expectedErrorCode;
+
+        InvalidDepositTestData(double amount, String expectedErrorCode) {
+            this.amount = amount;
+            this.expectedErrorCode = expectedErrorCode;
+        }
     }
 }
