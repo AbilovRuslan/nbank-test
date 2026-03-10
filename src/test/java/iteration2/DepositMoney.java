@@ -55,15 +55,15 @@ public class DepositMoney {
                 .extract()
                 .header("Authorization");
 
-        // Создаем счет - ИСПРАВЛЕНО: преобразуем Integer в Long
-        Integer idAsInt = new CreateAccountRequester(
+
+        AccountInfoResponse accountResponse = new CreateAccountRequester(
                 RequestSpecs.authSpec(authToken),
                 ResponseSpecs.entityWasCreated()
         ).post()
                 .extract()
-                .path("id");
+                .as(AccountInfoResponse.class);
 
-        accountId = idAsInt.longValue();  // Конвертируем Integer в Long
+        accountId = accountResponse.getId();  //
     }
 
     @ParameterizedTest(name = "{0}")
@@ -185,26 +185,23 @@ public class DepositMoney {
 
         double balanceAfter = getCurrentBalance();
 
-        String expectedMessage = testData.amount > MAX_DEPOSIT_LIMIT ?
-                "Deposit amount cannot exceed 5000" :
-                "Deposit amount must be at least 0.01";
-
         assertAll(
-                () -> assertThat(errorResponse).isEqualTo(expectedMessage),
+                () -> assertThat(errorResponse).isEqualTo(testData.expectedMessage),
                 () -> assertThat(balanceAfter).isCloseTo(balanceBefore, within(0.001))
         );
+
     }
 
     private static Stream<InvalidDepositTestData> invalidDepositAmountsProvider() {
         return Stream.of(
-                new InvalidDepositTestData(0.0, "INVALID_AMOUNT"),
-                new InvalidDepositTestData(-0.01, "INVALID_AMOUNT"),
-                new InvalidDepositTestData(-100.0, "INVALID_AMOUNT"),
-                new InvalidDepositTestData(-999.99, "INVALID_AMOUNT"),
-                new InvalidDepositTestData(5000.01, "DEPOSIT_LIMIT_EXCEEDED"),
-                new InvalidDepositTestData(5000.1, "DEPOSIT_LIMIT_EXCEEDED"),
-                new InvalidDepositTestData(6000.0, "DEPOSIT_LIMIT_EXCEEDED"),
-                new InvalidDepositTestData(10000.0, "DEPOSIT_LIMIT_EXCEEDED")
+                new InvalidDepositTestData(0.0, "Deposit amount must be at least 0.01"),
+                new InvalidDepositTestData(-0.01, "Deposit amount must be at least 0.01"),
+                new InvalidDepositTestData(-100.0, "Deposit amount must be at least 0.01"),
+                new InvalidDepositTestData(-999.99, "Deposit amount must be at least 0.01"),
+                new InvalidDepositTestData(5000.01, "Deposit amount cannot exceed 5000"),
+                new InvalidDepositTestData(5000.1, "Deposit amount cannot exceed 5000"),
+                new InvalidDepositTestData(6000.0, "Deposit amount cannot exceed 5000"),
+                new InvalidDepositTestData(10000.0, "Deposit amount cannot exceed 5000")
         );
     }
 
@@ -286,11 +283,11 @@ public class DepositMoney {
     // Внутренний класс для тестовых данных
     private static class InvalidDepositTestData {
         final double amount;
-        final String expectedErrorCode;
+        final String expectedMessage;
 
-        InvalidDepositTestData(double amount, String expectedErrorCode) {
+        InvalidDepositTestData(double amount, String expectedMessage) {
             this.amount = amount;
-            this.expectedErrorCode = expectedErrorCode;
+            this.expectedMessage = expectedMessage;
         }
     }
 }
