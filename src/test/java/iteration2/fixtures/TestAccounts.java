@@ -50,6 +50,14 @@ public class TestAccounts {
         return accountId;
     }
 
+    public void deleteAccount(Long accountId) {
+        createdAccounts.remove(accountId);
+        expectedBalances.remove(accountId);
+        // Здесь должен быть вызов API для удаления аккаунта
+        // new AccountRequests(RequestSpecs.authSpec(authToken), ResponseSpecs.requestReturnsOK())
+        //        .deleteAccount(accountId);
+    }
+
     // ===================== ДЕПОЗИТЫ =====================
 
     public void deposit(Long accountId, double amount) {
@@ -171,7 +179,10 @@ public class TestAccounts {
     }
 
     public AccessOperation getNonExistingAccount() {
-        return new AccessOperation(999_999L);
+        // Создаем и сразу удаляем аккаунт, получаем гарантированно несуществующий ID
+        Long tempId = createAccount();
+        deleteAccount(tempId);
+        return new AccessOperation(tempId);
     }
 
     public class AccessOperation {

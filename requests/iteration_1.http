@@ -52,7 +52,7 @@ Authorization: Basic YWRtaW46YWRtaW4=
   "role": "USER"
 }
 
-### Negative test: Admin cannot create new user with username contains $%^&*()@# characters
+### Negative test: Admin cannot create new user with username constants $%^&*()@# characters
 POST http://localhost:4111/api/v1/admin/users
 Content-Type: application/json
 Authorization: Basic YWRtaW46YWRtaW4=

@@ -27,17 +27,17 @@ public enum Endpoint {
 
     ACCOUNT_BY_ID(
             "/api/v1/accounts/{id}",
-            null,  // оставляем null
-            AccountInfoResponse.class  // можно оставить как есть
+            null,
+            AccountInfoResponse.class
     ),
 
     DEPOSIT(
             "/api/v1/accounts/deposit",
-            DepositMoneyRequest.class,  // можно оставить как есть
+            DepositMoneyRequest.class,
             AccountInfoResponse.class
     );
 
     private final String url;
-    private final Class<?> requestModel;  // 👈 ИЗМЕНИТЬ НА <?>
-    private final Class<?> responseModel;  // 👈 ИЗМЕНИТЬ НА <?>
+    private final Class<?> requestModel;
+    private final Class<?> responseModel;
 }

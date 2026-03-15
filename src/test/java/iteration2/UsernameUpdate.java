@@ -18,28 +18,12 @@ import utils.ApiPaths;
 
 import java.util.Map;
 
+import static constants.TestConstants.*;
 import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.not;
 
 public class UsernameUpdate {
-
-    // Константы для тестовых данных
-    private static final String VALID_NAME_TWO_WORDS = "Ivan Ivanov";
-    private static final String VALID_NAME_WITH_MIDDLE = "Anna Maria";
-    private static final String VALID_NAME_ENGLISH = "John Doe";
-
-    private static final String INVALID_NAME_ONE_WORD = "Ivan";
-    private static final String INVALID_NAME_THREE_WORDS = "Ivan Ivanov Petrovich";
-    private static final String INVALID_NAME_SPACES = "   ";
-    private static final String INVALID_NAME_EMPTY = "";
-    private static final String INVALID_NAME_SPECIAL_CHARS = "Ivan@ Ivanov";
-    private static final String INVALID_NAME_NUMBERS = "Ivan 123";
-
-    // HTTP статусы
-    private static final int STATUS_OK = 200;
-    private static final int STATUS_BAD_REQUEST = 400;
-    private static final int STATUS_UNAUTHORIZED = 401;
 
     // Конфигурация
     private static final String BASE_URI_PROPERTY = "test.base.uri";
