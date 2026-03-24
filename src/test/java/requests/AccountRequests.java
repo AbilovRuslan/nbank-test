@@ -21,7 +21,7 @@ public class AccountRequests {
     public ValidatableResponse createAccount() {
         return given()
                 .spec(requestSpec)
-                .post("/accounts")
+                .post("/api/v1/accounts")  // 👈 ИСПРАВЛЕНО!
                 .then()
                 .spec(responseSpec);
     }
@@ -30,7 +30,7 @@ public class AccountRequests {
         return given()
                 .spec(requestSpec)
                 .body(depositRequest)
-                .post("/accounts/deposit")
+                .post("/api/v1/accounts/deposit")  // 👈 ИСПРАВЛЕНО!
                 .then()
                 .spec(responseSpec);
     }
@@ -39,7 +39,7 @@ public class AccountRequests {
         return given()
                 .spec(requestSpec)
                 .body(transferRequest)
-                .post("/accounts/transfer")
+                .post("/api/v1/accounts/transfer")  // 👈 ИСПРАВЛЕНО!
                 .then()
                 .spec(responseSpec);
     }
@@ -47,7 +47,7 @@ public class AccountRequests {
     public AccountInfoResponse getAccount(Long accountId) {
         return given()
                 .spec(requestSpec)
-                .get("/accounts/" + accountId)
+                .get("/api/v1/accounts/" + accountId)  // ✅ УЖЕ ПРАВИЛЬНО!
                 .then()
                 .spec(responseSpec)
                 .extract()

@@ -9,8 +9,7 @@ public class ResponseSpecs {
 
     public static final String AUTHORIZATION_HEADER = "Authorization";
 
-    private ResponseSpecs() {
-    }
+    private ResponseSpecs() {}
 
     private static ResponseSpecBuilder defaultResponseBuilder() {
         return new ResponseSpecBuilder();
@@ -31,7 +30,7 @@ public class ResponseSpecs {
     public static ResponseSpecification requestReturnsBadRequest(String errorKey, String errorValue) {
         return defaultResponseBuilder()
                 .expectStatusCode(HttpStatus.SC_BAD_REQUEST)
-                .expectBody(errorKey, Matchers.hasItem(Matchers.containsString(errorValue)))
+                .expectBody(errorKey + "[0]", Matchers.equalTo(errorValue))  // <-- добавили [0]
                 .build();
     }
 
@@ -55,21 +54,25 @@ public class ResponseSpecs {
 
     public static ResponseSpecification badRequest() {
         return defaultResponseBuilder()
-                .expectStatusCode(HttpStatus.SC_BAD_REQUEST)  // 400
+                .expectStatusCode(HttpStatus.SC_BAD_REQUEST)
                 .build();
     }
 
     public static ResponseSpecification unauthorized() {
         return defaultResponseBuilder()
-                .expectStatusCode(HttpStatus.SC_UNAUTHORIZED)  // 401
+                .expectStatusCode(HttpStatus.SC_UNAUTHORIZED)
+                .build();
+    }
+
+    public static ResponseSpecification forbidden() {
+        return defaultResponseBuilder()
+                .expectStatusCode(HttpStatus.SC_FORBIDDEN) // 403
                 .build();
     }
 
     public static ResponseSpecification notFound() {
         return defaultResponseBuilder()
-                .expectStatusCode(HttpStatus.SC_NOT_FOUND)  // 404
+                .expectStatusCode(HttpStatus.SC_NOT_FOUND)
                 .build();
     }
-
-
 }

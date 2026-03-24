@@ -3,7 +3,6 @@ package requests;
 import io.restassured.response.ValidatableResponse;
 import io.restassured.specification.RequestSpecification;
 import io.restassured.specification.ResponseSpecification;
-import models.BaseModel;
 
 import static io.restassured.RestAssured.given;
 
@@ -16,7 +15,6 @@ public class CreateAccountRequester {
         this.responseSpec = responseSpec;
     }
 
-
     public ValidatableResponse post(Object body) {
         return given()
                 .spec(requestSpec)
@@ -26,7 +24,13 @@ public class CreateAccountRequester {
                 .then()
                 .spec(responseSpec);
     }
+
     public ValidatableResponse post() {
-        return post(null);
+        return given()  // Не вызываем post(null)
+                .spec(requestSpec)
+                .when()  // Без body()
+                .post("/api/v1/accounts")
+                .then()
+                .spec(responseSpec);
     }
 }

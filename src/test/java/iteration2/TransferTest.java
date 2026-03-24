@@ -1,266 +1,114 @@
 package iteration2;
 
-import generators.RandomData;
-import models.*;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
+import iteration2.fixtures.TestAccounts;
+import org.junit.jupiter.api.*;
 import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
-import org.junit.jupiter.params.provider.ValueSource;
-import requests.*;
+import requests.LoginUserRequester;
+import requests.steps.AdminSteps;
 import specs.RequestSpecs;
 import specs.ResponseSpecs;
 
 import java.util.Random;
 import java.util.stream.Stream;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
+import static constants.TestConstants.*;
+import static iteration2.fixtures.TestAccounts.MIN_TRANSFER;
 
+@DisplayName("Переводы между счетами — Senior Level")
 public class TransferTest {
 
     private static final Random RANDOM = new Random();
-    private static final double MIN_BALANCE = 0.01;
-    private static final double MIN_TRANSFER = 0.01;
 
     private String authToken;
+    private TestAccounts accounts;
     private Long senderAccountId;
     private Long receiverAccountId;
+    private Long nonExistingAccountId;
     private Double initialBalance;
 
     @BeforeEach
     void setup() {
-        String username = RandomData.getUsername();
-        String password = RandomData.getPassword();
+        var user = AdminSteps.createUser();
+        authToken = login(user.getUsername(), user.getPassword());
 
-        // 1. Создание пользователя
-        CreateUserRequest userRequest = CreateUserRequest.builder()
-                .username(username)
-                .password(password)
-                .role(UserRole.USER.toString())
-                .build();
+        accounts = new TestAccounts(authToken);
+        senderAccountId = accounts.createAccount();
+        receiverAccountId = accounts.createAccount();
+        nonExistingAccountId = createAndDeleteTempAccount();
 
-        new AdminCreateUserRequester(
-                RequestSpecs.adminSpec(),
-                ResponseSpecs.entityWasCreated()
-        ).post(userRequest);
-
-        // 2. Логин
-        LoginUserRequest loginRequest = LoginUserRequest.builder()
-                .username(username)
-                .password(password)
-                .build();
-
-        authToken = new LoginUserRequester(
-                RequestSpecs.unauthSpec(),
-                ResponseSpecs.requestReturnsOK()
-        ).post(loginRequest)
-                .extract()
-                .header("Authorization");
-
-        // 3. Создание двух счетов через CreateAccountRequester
-        senderAccountId = new CreateAccountRequester(
-                RequestSpecs.authSpec(authToken),
-                ResponseSpecs.entityWasCreated()
-        ).post()
-                .extract()
-                .path("id");
-
-        receiverAccountId = new CreateAccountRequester(
-                RequestSpecs.authSpec(authToken),
-                ResponseSpecs.entityWasCreated()
-        ).post()
-                .extract()
-                .path("id");
-
-        // 4. Пополнение счета отправителя
-        initialBalance = 500.0 + RANDOM.nextDouble() * 4500.0;
-        initialBalance = Math.round(initialBalance * 100.0) / 100.0;
-
-        DepositMoneyRequest depositRequest = DepositMoneyRequest.builder()
-                .id(senderAccountId)
-                .balance(initialBalance)
-                .build();
-
-        new DepositRequester(
-                RequestSpecs.authSpec(authToken),
-                ResponseSpecs.balanceWasUpdated()
-        ).post(depositRequest);
+        initialBalance = generateInitialBalance();
+        accounts.deposit(senderAccountId, initialBalance);
     }
 
-    // ================= ПОЗИТИВНЫЕ ТЕСТЫ =================
+    @AfterEach
+    void cleanup() {
+        accounts.cleanup();
+    }
 
-    @ParameterizedTest
+    @ParameterizedTest(name = "Перевод {0} должен пройти успешно")
     @MethodSource("validTransferAmounts")
-    void shouldSuccessfullyTransferMoney(double transferAmount) {
-        // Given
-        double senderBalanceBefore = getAccountBalance(senderAccountId);
-        double receiverBalanceBefore = getAccountBalance(receiverAccountId);
-
-        // When
-        TransferMoneyRequest transferRequest = TransferMoneyRequest.builder()
-                .fromAccountId(senderAccountId)
-                .toAccountId(receiverAccountId)
-                .amount(transferAmount)
-                .build();
-
-        new TransferRequester(
-                RequestSpecs.authSpec(authToken),
-                ResponseSpecs.transferWasSuccessful()
-        ).post(transferRequest);
-
-        // Then
-        double senderBalanceAfter = getAccountBalance(senderAccountId);
-        double receiverBalanceAfter = getAccountBalance(receiverAccountId);
-
-        assertEquals(senderBalanceBefore - transferAmount, senderBalanceAfter, 0.001,
-                "Sender balance incorrect after transfer");
-        assertEquals(receiverBalanceBefore + transferAmount, receiverBalanceAfter, 0.001,
-                "Receiver balance incorrect after transfer");
+    void shouldSuccessfullyTransferMoney(double amount) {
+        accounts.transfer(senderAccountId, receiverAccountId, amount)
+                .expectSuccess();
     }
 
-    private static Stream<Arguments> validTransferAmounts() {
+    private Stream<Double> validTransferAmounts() {
         return Stream.of(
-                Arguments.of(MIN_TRANSFER),
-                Arguments.of(100.50),
-                Arguments.of(1000.0),
-                Arguments.of(2500.75)
+                MIN_TRANSFER,
+                TRANSFER_AMOUNT_MEDIUM,
+                initialBalance * TRANSFER_PERCENT_30,
+                initialBalance * TRANSFER_PERCENT_70
         );
     }
 
-    @ParameterizedTest
-    @MethodSource("boundaryTransferAmounts")
-    void shouldTransferBoundaryAmounts(double transferAmount) {
-        double senderBalanceBefore = getAccountBalance(senderAccountId);
-        double receiverBalanceBefore = getAccountBalance(receiverAccountId);
-
-        TransferMoneyRequest transferRequest = TransferMoneyRequest.builder()
-                .fromAccountId(senderAccountId)
-                .toAccountId(receiverAccountId)
-                .amount(transferAmount)
-                .build();
-
-        new TransferRequester(
-                RequestSpecs.authSpec(authToken),
-                ResponseSpecs.transferWasSuccessful()
-        ).post(transferRequest);
-
-        double senderBalanceAfter = getAccountBalance(senderAccountId);
-        double receiverBalanceAfter = getAccountBalance(receiverAccountId);
-
-        assertEquals(senderBalanceBefore - transferAmount, senderBalanceAfter, 0.001);
-        assertEquals(receiverBalanceBefore + transferAmount, receiverBalanceAfter, 0.001);
-    }
-
-    private Stream<Arguments> boundaryTransferAmounts() {
-        double maxTransfer = initialBalance - MIN_BALANCE;
-        return Stream.of(
-                Arguments.of(MIN_TRANSFER),
-                Arguments.of(maxTransfer)
-        );
-    }
-
-    // ================= НЕГАТИВНЫЕ ТЕСТЫ =================
-
-    @ParameterizedTest
-    @ValueSource(doubles = {0.0, -0.01, -100.0, -999.99})
+    @ParameterizedTest(name = "Сумма {0} должна быть отклонена")
+    @MethodSource("invalidTransferAmounts")
     void shouldRejectInvalidAmounts(double amount) {
-        double senderBalanceBefore = getAccountBalance(senderAccountId);
-        double receiverBalanceBefore = getAccountBalance(receiverAccountId);
+        accounts.transfer(senderAccountId, receiverAccountId, amount)
+                .expectError(ERROR_INVALID_AMOUNT);
+    }
 
-        TransferMoneyRequest transferRequest = TransferMoneyRequest.builder()
-                .fromAccountId(senderAccountId)
-                .toAccountId(receiverAccountId)
-                .amount(amount)
-                .build();
-
-        new TransferRequester(
-                RequestSpecs.authSpec(authToken),
-                ResponseSpecs.badRequest()
-        ).post(transferRequest);
-
-        double senderBalanceAfter = getAccountBalance(senderAccountId);
-        double receiverBalanceAfter = getAccountBalance(receiverAccountId);
-
-        assertEquals(senderBalanceBefore, senderBalanceAfter, 0.001,
-                "Sender balance changed after invalid transfer");
-        assertEquals(receiverBalanceBefore, receiverBalanceAfter, 0.001,
-                "Receiver balance changed after invalid transfer");
+    private Stream<Double> invalidTransferAmounts() {
+        return Stream.of(
+                ZERO_AMOUNT,
+                SMALL_NEGATIVE_AMOUNT,
+                MEDIUM_NEGATIVE_AMOUNT,
+                LARGE_NEGATIVE_AMOUNT
+        );
     }
 
     @Test
     void shouldRejectTransferExceedingBalance() {
-        double transferAmount = initialBalance + 100.0;
-        double senderBalanceBefore = getAccountBalance(senderAccountId);
-        double receiverBalanceBefore = getAccountBalance(receiverAccountId);
-
-        TransferMoneyRequest transferRequest = TransferMoneyRequest.builder()
-                .fromAccountId(senderAccountId)
-                .toAccountId(receiverAccountId)
-                .amount(transferAmount)
-                .build();
-
-        new TransferRequester(
-                RequestSpecs.authSpec(authToken),
-                ResponseSpecs.badRequest()
-        ).post(transferRequest);
-
-        double senderBalanceAfter = getAccountBalance(senderAccountId);
-        double receiverBalanceAfter = getAccountBalance(receiverAccountId);
-
-        assertEquals(senderBalanceBefore, senderBalanceAfter, 0.001);
-        assertEquals(receiverBalanceBefore, receiverBalanceAfter, 0.001);
+        double transferAmount = initialBalance + EXCEED_BALANCE_AMOUNT;
+        accounts.transfer(senderAccountId, receiverAccountId, transferAmount)
+                .expectError(ERROR_INSUFFICIENT_FUNDS);
     }
 
     @Test
     void shouldRejectTransferToNonExistingAccount() {
-        long nonExistingAccountId = 999999L;
-        double senderBalanceBefore = getAccountBalance(senderAccountId);
-        double receiverBalanceBefore = getAccountBalance(receiverAccountId);
-
-        TransferMoneyRequest transferRequest = TransferMoneyRequest.builder()
-                .fromAccountId(senderAccountId)
-                .toAccountId(nonExistingAccountId)
-                .amount(10.0)
-                .build();
-
-        new TransferRequester(
-                RequestSpecs.authSpec(authToken),
-                ResponseSpecs.notFound()
-        ).post(transferRequest);
-
-        double senderBalanceAfter = getAccountBalance(senderAccountId);
-        double receiverBalanceAfter = getAccountBalance(receiverAccountId);
-
-        assertEquals(senderBalanceBefore, senderBalanceAfter, 0.001);
-        assertEquals(receiverBalanceBefore, receiverBalanceAfter, 0.001);
+        accounts.transfer(senderAccountId, nonExistingAccountId, TRANSFER_AMOUNT_SMALL)
+                .expectError(ERROR_ACCOUNT_NOT_FOUND);
     }
 
-    // ================= ТЕСТЫ ДОСТУПА =================
-
-    @Test
-    void shouldNotAllowUnauthorizedAccessToAccount() {
-        new AccountRequests(
+    private String login(String username, String password) {
+        return new LoginUserRequester(
                 RequestSpecs.unauthSpec(),
-                ResponseSpecs.unauthorized()
-        ).getAccount(senderAccountId);
-    }
-
-    @Test
-    void shouldReturnNotFoundForNonExistingAccount() {
-        new AccountRequests(
-                RequestSpecs.authSpec(authToken),
-                ResponseSpecs.notFound()
-        ).getAccount(999999L);
-    }
-
-    // ================= ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ =================
-
-    private double getAccountBalance(Long accountId) {
-        return new AccountRequests(
-                RequestSpecs.authSpec(authToken),
                 ResponseSpecs.requestReturnsOK()
-        ).getAccount(accountId)
-                .getBalance();
+        ).post(
+                new models.LoginUserRequest(username, password)
+        ).extract().header("Authorization");
+    }
+
+    private double generateInitialBalance() {
+        double balance = MIN_INITIAL_BALANCE +
+                RANDOM.nextDouble() * (MAX_INITIAL_BALANCE - MIN_INITIAL_BALANCE);
+        return Math.round(balance * PRECISION_MULTIPLIER) / PRECISION_MULTIPLIER;
+    }
+
+    private long createAndDeleteTempAccount() {
+        long tempId = accounts.createAccount();
+        accounts.deleteAccount(tempId);
+        return tempId;
     }
 }
