@@ -43,3 +43,5 @@ build/
 .idea/encodings.xml
 .idea/workspace.xml
 pom.xml.save
+.idea/
+*.save
