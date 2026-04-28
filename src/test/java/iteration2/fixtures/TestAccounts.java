@@ -1,5 +1,6 @@
 package iteration2.fixtures;
 
+import models.AccountInfoResponse;
 import models.DepositMoneyRequest;
 import models.TransferMoneyRequest;
 import requests.AccountRequests;
@@ -8,6 +9,8 @@ import requests.DepositRequester;
 import requests.TransferRequester;
 import specs.RequestSpecs;
 import specs.ResponseSpecs;
+import models.AccountInfoResponse;
+
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -31,14 +34,14 @@ public class TestAccounts {
     // ===================== СОЗДАНИЕ СЧЕТОВ =====================
 
     public Long createAccount() {
-        Integer idAsInt = new CreateAccountRequester(
+        AccountInfoResponse accountResponse = new CreateAccountRequester(
                 RequestSpecs.authSpec(authToken),
                 ResponseSpecs.entityWasCreated()
         ).post()
                 .extract()
-                .path("id");
+                .as(AccountInfoResponse.class);
 
-        Long accountId = idAsInt.longValue();
+        Long accountId = accountResponse.getId();
         createdAccounts.add(accountId);
         expectedBalances.put(accountId, 0.0);
         return accountId;
@@ -48,14 +51,6 @@ public class TestAccounts {
         Long accountId = createAccount();
         deposit(accountId, balance);
         return accountId;
-    }
-
-    public void deleteAccount(Long accountId) {
-        createdAccounts.remove(accountId);
-        expectedBalances.remove(accountId);
-        // Здесь должен быть вызов API для удаления аккаунта
-        // new AccountRequests(RequestSpecs.authSpec(authToken), ResponseSpecs.requestReturnsOK())
-        //        .deleteAccount(accountId);
     }
 
     // ===================== ДЕПОЗИТЫ =====================
@@ -124,7 +119,7 @@ public class TestAccounts {
 
             assertThat(responseBody)
                     .as("Error message should contain: " + expectedMessage)
-                    .contains(expectedMessage);
+                    .contains(expectedMessage);  // ← ИСПРАВЛЕНО: contains вместо isEqualTo
 
             return this;
         }
@@ -179,10 +174,7 @@ public class TestAccounts {
     }
 
     public AccessOperation getNonExistingAccount() {
-        // Создаем и сразу удаляем аккаунт, получаем гарантированно несуществующий ID
-        Long tempId = createAccount();
-        deleteAccount(tempId);
-        return new AccessOperation(tempId);
+        return new AccessOperation(999_999L);
     }
 
     public class AccessOperation {

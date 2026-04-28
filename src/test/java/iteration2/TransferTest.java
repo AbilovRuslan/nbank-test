@@ -35,7 +35,7 @@ public class TransferTest {
         accounts = new TestAccounts(authToken);
         senderAccountId = accounts.createAccount();
         receiverAccountId = accounts.createAccount();
-        nonExistingAccountId = createAndDeleteTempAccount();
+        nonExistingAccountId = NON_EXISTENT_ACCOUNT_ID;
 
         initialBalance = generateInitialBalance();
         accounts.deposit(senderAccountId, initialBalance);
@@ -53,12 +53,12 @@ public class TransferTest {
                 .expectSuccess();
     }
 
-    private Stream<Double> validTransferAmounts() {
+    private static Stream<Double> validTransferAmounts() {
         return Stream.of(
                 MIN_TRANSFER,
                 TRANSFER_AMOUNT_MEDIUM,
-                initialBalance * TRANSFER_PERCENT_30,
-                initialBalance * TRANSFER_PERCENT_70
+                TRANSFER_AMOUNT_LARGE,
+                TRANSFER_AMOUNT_MAX
         );
     }
 
@@ -69,7 +69,7 @@ public class TransferTest {
                 .expectError(ERROR_INVALID_AMOUNT);
     }
 
-    private Stream<Double> invalidTransferAmounts() {
+    private static Stream<Double> invalidTransferAmounts() {
         return Stream.of(
                 ZERO_AMOUNT,
                 SMALL_NEGATIVE_AMOUNT,
@@ -81,6 +81,7 @@ public class TransferTest {
     @Test
     void shouldRejectTransferExceedingBalance() {
         double transferAmount = initialBalance + EXCEED_BALANCE_AMOUNT;
+
         accounts.transfer(senderAccountId, receiverAccountId, transferAmount)
                 .expectError(ERROR_INSUFFICIENT_FUNDS);
     }
@@ -104,11 +105,5 @@ public class TransferTest {
         double balance = MIN_INITIAL_BALANCE +
                 RANDOM.nextDouble() * (MAX_INITIAL_BALANCE - MIN_INITIAL_BALANCE);
         return Math.round(balance * PRECISION_MULTIPLIER) / PRECISION_MULTIPLIER;
-    }
-
-    private long createAndDeleteTempAccount() {
-        long tempId = accounts.createAccount();
-        accounts.deleteAccount(tempId);
-        return tempId;
     }
 }

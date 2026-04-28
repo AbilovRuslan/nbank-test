@@ -12,9 +12,9 @@ public class TestConstants {
     // ================= СООБЩЕНИЯ ОБ ОШИБКАХ =================
     public static final String ERROR_MIN_DEPOSIT = "Deposit amount must be at least 0.01";
     public static final String ERROR_MAX_DEPOSIT = "Deposit amount cannot exceed 5000";
-    public static final String ERROR_INVALID_AMOUNT = "Invalid amount";
-    public static final String ERROR_INSUFFICIENT_FUNDS = "Insufficient funds";
-    public static final String ERROR_ACCOUNT_NOT_FOUND = "Account not found";
+    public static final String ERROR_INVALID_AMOUNT = "Transfer amount must be at least 0.01";
+    public static final String ERROR_INSUFFICIENT_FUNDS = "Invalid transfer: insufficient funds or invalid accounts";
+    public static final String ERROR_ACCOUNT_NOT_FOUND = "Invalid transfer: insufficient funds or invalid accounts";
 
     // ================= ТЕСТОВЫЕ ЗНАЧЕНИЯ ДЛЯ DEPOSIT =================
     public static final long NON_EXISTENT_ACCOUNT_ID = 999999L;
