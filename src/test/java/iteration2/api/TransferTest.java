@@ -1,4 +1,4 @@
-package iteration2;
+package iteration2.api;
 
 import iteration2.fixtures.TestAccounts;
 import org.junit.jupiter.api.*;
