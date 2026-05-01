@@ -1,4 +1,4 @@
-package iteration2;
+package iteration2.api;
 
 import models.AccountInfoResponse;
 import models.CreateUserRequest;
@@ -17,8 +17,6 @@ import specs.ResponseSpecs;
 
 import java.util.List;
 import java.util.Random;
-import java.util.concurrent.atomic.AtomicReference;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static constants.TestConstants.*;
