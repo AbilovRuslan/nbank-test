@@ -45,3 +45,5 @@ build/
 pom.xml.save
 .idea/
 *.save.idea/
+src/test/resources/config.properties
+src/test/resources/config.properties.save
