@@ -22,6 +22,12 @@ public enum Endpoint {
     ACCOUNTS(
             "/api/v1/accounts",
             BaseModel.class,
+            models.CreateAccountResponse.class
+    ),
+
+    CUSTOMER_ACCOUNTS(
+            "/api/v1/customer/accounts",
+            BaseModel.class,
             CreateAccountResponse.class
     ),
 
@@ -29,13 +35,13 @@ public enum Endpoint {
             "/api/v1/accounts/{id}",
             null,
             AccountInfoResponse.class
-    ),
+    ),   // ← запятая
 
     DEPOSIT(
             "/api/v1/accounts/deposit",
             DepositMoneyRequest.class,
             AccountInfoResponse.class
-    );
+    );   // ← точка с запятой только после последнего
 
     private final String url;
     private final Class<?> requestModel;

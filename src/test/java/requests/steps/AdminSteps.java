@@ -8,6 +8,8 @@ import requests.skelethon.requesters.ValidatedCrudRequester;
 import specs.RequestSpecs;
 import specs.ResponseSpecs;
 
+import java.util.List;
+
 public class AdminSteps {
     public static CreateUserRequest createUser() {
         CreateUserRequest userRequest =
@@ -21,4 +23,12 @@ public class AdminSteps {
 
         return userRequest;
     }
+
+    public static List<CreateUserResponse> getAllUsers() {
+        return new ValidatedCrudRequester<CreateUserResponse>(
+                RequestSpecs.adminSpec(),
+                Endpoint.ADMIN_USER,
+                ResponseSpecs.requestReturnsOK()).getAll(CreateUserResponse[].class);
+    }
+
 }

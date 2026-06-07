@@ -1,9 +1,11 @@
 package models;
 
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import api.models.AccountResponse;
 
 import java.util.List;
 
@@ -17,5 +19,4 @@ public class CreateUserResponse extends BaseModel {
     private String password;
     private String name;
     private String role;
-    private List<Object> accounts;
-}
+    List<AccountResponse> accounts;}

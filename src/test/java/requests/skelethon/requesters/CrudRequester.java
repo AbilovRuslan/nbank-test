@@ -7,10 +7,11 @@ import models.BaseModel;
 import requests.skelethon.Endpoint;
 import requests.skelethon.HttpRequest;
 import requests.skelethon.interfaces.CrudEndpointInterface;
+import requests.skelethon.interfaces.GetAllEndpointInterface;
 
-import static io.restassured.RestAssured.*;
+import static io.restassured.RestAssured.given;
 
-public class CrudRequester extends HttpRequest implements CrudEndpointInterface {
+public class CrudRequester extends HttpRequest implements CrudEndpointInterface, GetAllEndpointInterface{
     public CrudRequester(RequestSpecification requestSpecification, Endpoint endpoint, ResponseSpecification responseSpecification) {
         super(requestSpecification, endpoint, responseSpecification);
     }
@@ -40,5 +41,14 @@ public class CrudRequester extends HttpRequest implements CrudEndpointInterface 
     @Override
     public Object delete(long id) {
         return null;
+    }
+
+    @Override
+    public ValidatableResponse getAll(Class<?> clazz) {
+        return given()
+                .spec(requestSpecification)
+                .get(endpoint.getUrl())
+                .then().assertThat()
+                .spec(responseSpecification);
     }
 }
