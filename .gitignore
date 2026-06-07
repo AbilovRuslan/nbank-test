@@ -44,4 +44,4 @@ build/
 .idea/workspace.xml
 pom.xml.save
 .idea/
-*.save
+*.save.idea/
