@@ -1,259 +1,240 @@
 package iteration2.ui;
 
-import com.codeborne.selenide.Configuration;
-import com.codeborne.selenide.Selectors;
-import com.codeborne.selenide.Selenide;
-import models.AccountInfoResponse;
+import iteration1.ui.BaseUiTest;
+import models.CreateAccountResponse;
 import models.CreateUserRequest;
-import models.LoginUserRequest;
-import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.RepeatedTest;
 import org.junit.jupiter.api.Test;
-import org.openqa.selenium.Alert;
-import requests.skelethon.Endpoint;
-import requests.skelethon.requesters.CrudRequester;
 import requests.steps.AdminSteps;
-import specs.RequestSpecs;
-import specs.ResponseSpecs;
+import requests.steps.UserSteps;
+import requests.ui.pages.BankAlert;
+import requests.ui.pages.UserDashboard;
 
-import java.util.Map;
+import java.util.List;
+import java.util.Random;
 
-import static com.codeborne.selenide.Selenide.$;
-import static com.codeborne.selenide.Selenide.switchTo;
-import static io.restassured.RestAssured.given;
+import static constants.TestConstants.*;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.within;
 
-public class DepositMoneyUi {
+public class DepositMoneyUi extends BaseUiTest {
 
-    @BeforeAll
-    public static void setupSelenoid() {
-        Configuration.remote = "http://localhost:4444/wd/hub";
-        Configuration.baseUrl = "http://192.168.0.103:3000";
-        Configuration.browser = "chrome";
-        Configuration.browserSize = "1920x1080";
-        Configuration.browserCapabilities.setCapability("selenoid:options",
-                Map.of("enableVNC", true, "enableLog", true));
+    private static final Random RANDOM = new Random();
+
+    @Test
+    public void userCanDepositMoney() {
+        CreateUserRequest user = AdminSteps.createUser();
+        authAsUser(user);
+
+        UserDashboard dashboard = new UserDashboard();
+
+        dashboard.open()
+                .createNewAccount()
+                .openDeposit()
+                .selectFirstAccount()
+                .enterAmount(TRANSFER_AMOUNT_MEDIUM)
+                .submitDeposit();
+
+        dashboard.checkAlertMessageAndAccept(
+                BankAlert.DEPOSIT_SUCCESSFUL.getMessage());
+
+        List<CreateAccountResponse> accounts =
+                new UserSteps(user.getUsername(), user.getPassword())
+                        .getAllAccounts();
+
+        assertThat(accounts).hasSize(1);
+        assertThat(accounts.getFirst().getBalance())
+                .isCloseTo(TRANSFER_AMOUNT_MEDIUM, within(DELTA));
     }
 
     @Test
-    @DisplayName("Успешный депозит на 500.00")
-    public void depositValidAmount() {
+    public void userCanDepositMinimumAmount() {
         CreateUserRequest user = AdminSteps.createUser();
-        Selenide.open("/login");
-        $(Selectors.byAttribute("placeholder", "Username")).sendKeys(user.getUsername());
-        $(Selectors.byAttribute("placeholder", "Password")).sendKeys(user.getPassword());
-        $("button").click();
+        authAsUser(user);
 
-        $(Selectors.byText("➕ Create New Account")).click();
-        switchTo().alert().accept();
+        UserDashboard dashboard = new UserDashboard();
 
-        Selenide.open("/deposit");
-        Selenide.refresh();
-        Selenide.sleep(1000);
+        dashboard.open()
+                .createNewAccount()
+                .openDeposit()
+                .selectFirstAccount()
+                .enterAmount(MIN_VALID_DEPOSIT)
+                .submitDeposit();
 
-        $("select.account-selector").selectOption(1);
-        $("input.deposit-input").setValue("500.00");
-        $(Selectors.byText("💵 Deposit")).click();
+        dashboard.checkAlertMessageAndAccept(
+                BankAlert.DEPOSIT_SUCCESSFUL.getMessage());
 
-        Alert success = switchTo().alert();
-        assertThat(success.getText()).contains("Successful");
-        success.accept();
+        List<CreateAccountResponse> accounts =
+                new UserSteps(user.getUsername(), user.getPassword())
+                        .getAllAccounts();
 
-        // API-проверка
-        String authToken = new CrudRequester(RequestSpecs.unauthSpec(), Endpoint.LOGIN, ResponseSpecs.requestReturnsOK())
-                .post(LoginUserRequest.builder().username(user.getUsername()).password(user.getPassword()).build())
-                .extract().header("Authorization");
-        AccountInfoResponse[] accounts = given()
-                .spec(RequestSpecs.authSpec(authToken))
-                .get("http://localhost:4111/api/v1/customer/accounts")
-                .then().assertThat().statusCode(200)
-                .extract().as(AccountInfoResponse[].class);
-        assertThat(accounts).isNotEmpty();
-        assertThat(accounts[0].getBalance()).isCloseTo(500.00, within(0.001));
+        assertThat(accounts).hasSize(1);
+        assertThat(accounts.getFirst().getBalance())
+                .isCloseTo(MIN_VALID_DEPOSIT, within(DELTA));
     }
 
     @Test
-    @DisplayName("Депозит на минимальную сумму (0.01)")
-    public void depositMinAmount() {
+    public void userCanDepositMaximumAmount() {
         CreateUserRequest user = AdminSteps.createUser();
-        Selenide.open("/login");
-        $(Selectors.byAttribute("placeholder", "Username")).sendKeys(user.getUsername());
-        $(Selectors.byAttribute("placeholder", "Password")).sendKeys(user.getPassword());
-        $("button").click();
+        authAsUser(user);
 
-        $(Selectors.byText("➕ Create New Account")).click();
-        switchTo().alert().accept();
+        UserDashboard dashboard = new UserDashboard();
 
-        Selenide.open("/deposit");
-        Selenide.refresh();
-        Selenide.sleep(1000);
+        dashboard.open()
+                .createNewAccount()
+                .openDeposit()
+                .selectFirstAccount()
+                .enterAmount(MAX_DEPOSIT_LIMIT)
+                .submitDeposit();
 
-        $("select.account-selector").selectOption(1);
-        $("input.deposit-input").setValue("0.01");
-        $(Selectors.byText("💵 Deposit")).click();
+        dashboard.checkAlertMessageAndAccept(
+                BankAlert.DEPOSIT_SUCCESSFUL.getMessage());
 
-        Alert success = switchTo().alert();
-        assertThat(success.getText()).contains("Successfully");
-        success.accept();
+        List<CreateAccountResponse> accounts =
+                new UserSteps(user.getUsername(), user.getPassword())
+                        .getAllAccounts();
 
-        // API-проверка
-        String authToken = new CrudRequester(RequestSpecs.unauthSpec(), Endpoint.LOGIN, ResponseSpecs.requestReturnsOK())
-                .post(LoginUserRequest.builder().username(user.getUsername()).password(user.getPassword()).build())
-                .extract().header("Authorization");
-        AccountInfoResponse[] accounts = given()
-                .spec(RequestSpecs.authSpec(authToken))
-                .get("http://localhost:4111/api/v1/customer/accounts")
-                .then().assertThat().statusCode(200)
-                .extract().as(AccountInfoResponse[].class);
-        assertThat(accounts).isNotEmpty();
-        assertThat(accounts[0].getBalance()).isCloseTo(0.01, within(0.001));
+        assertThat(accounts).hasSize(1);
+        assertThat(accounts.getFirst().getBalance())
+                .isCloseTo(MAX_DEPOSIT_LIMIT, within(DELTA));
+    }
+
+    @RepeatedTest(RANDOM_TEST_REPETITIONS)
+    public void userCanDepositRandomAmount() {
+        double amount = MIN_VALID_DEPOSIT + (MAX_DEPOSIT_LIMIT - MIN_VALID_DEPOSIT) * RANDOM.nextDouble();
+        amount = Math.round(amount * PRECISION_MULTIPLIER) / PRECISION_MULTIPLIER;
+
+        CreateUserRequest user = AdminSteps.createUser();
+        authAsUser(user);
+
+        UserDashboard dashboard = new UserDashboard();
+
+        dashboard.open()
+                .createNewAccount()
+                .openDeposit()
+                .selectFirstAccount()
+                .enterAmount(amount)
+                .submitDeposit();
+
+        dashboard.checkAlertMessageAndAccept(
+                BankAlert.DEPOSIT_SUCCESSFUL.getMessage());
+
+        List<CreateAccountResponse> accounts =
+                new UserSteps(user.getUsername(), user.getPassword())
+                        .getAllAccounts();
+
+        assertThat(accounts).hasSize(1);
+        assertThat(accounts.getFirst().getBalance())
+                .isCloseTo(amount, within(DELTA));
     }
 
     @Test
-    @DisplayName("Депозит на максимальную сумму (5000)")
-    public void depositMaxAmount() {
+    public void userCanMakeMultipleDeposits() {
+        double firstAmount = TRANSFER_AMOUNT_LARGE;
+        double secondAmount = TRANSFER_AMOUNT_MEDIUM;
+        double expectedBalance = firstAmount + secondAmount;
+
         CreateUserRequest user = AdminSteps.createUser();
-        Selenide.open("/login");
-        $(Selectors.byAttribute("placeholder", "Username")).sendKeys(user.getUsername());
-        $(Selectors.byAttribute("placeholder", "Password")).sendKeys(user.getPassword());
-        $("button").click();
+        authAsUser(user);
 
-        $(Selectors.byText("➕ Create New Account")).click();
-        switchTo().alert().accept();
+        UserDashboard dashboard = new UserDashboard();
 
-        Selenide.open("/deposit");
-        Selenide.refresh();
-        Selenide.sleep(1000);
+        dashboard.open()
+                .createNewAccount()
+                .openDeposit()
+                .selectFirstAccount()
+                .enterAmount(firstAmount)
+                .submitDeposit();
+        dashboard.checkAlertMessageAndAccept(
+                BankAlert.DEPOSIT_SUCCESSFUL.getMessage());
 
-        $("select.account-selector").selectOption(1);
-        $("input.deposit-input").setValue("5000.00");
-        $(Selectors.byText("💵 Deposit")).click();
+        dashboard.openDeposit()
+                .selectFirstAccount()
+                .enterAmount(secondAmount)
+                .submitDeposit();
+        dashboard.checkAlertMessageAndAccept(
+                BankAlert.DEPOSIT_SUCCESSFUL.getMessage());
 
-        Alert success = switchTo().alert();
-        assertThat(success.getText()).contains("Successfully");
-        success.accept();
+        List<CreateAccountResponse> accounts =
+                new UserSteps(user.getUsername(), user.getPassword())
+                        .getAllAccounts();
 
-        // API-проверка
-        String authToken = new CrudRequester(RequestSpecs.unauthSpec(), Endpoint.LOGIN, ResponseSpecs.requestReturnsOK())
-                .post(LoginUserRequest.builder().username(user.getUsername()).password(user.getPassword()).build())
-                .extract().header("Authorization");
-        AccountInfoResponse[] accounts = given()
-                .spec(RequestSpecs.authSpec(authToken))
-                .get("http://localhost:4111/api/v1/customer/accounts")
-                .then().assertThat().statusCode(200)
-                .extract().as(AccountInfoResponse[].class);
-        assertThat(accounts).isNotEmpty();
-        assertThat(accounts[0].getBalance()).isCloseTo(5000.00, within(0.001));
+        assertThat(accounts).hasSize(1);
+        assertThat(accounts.getFirst().getBalance())
+                .isCloseTo(expectedBalance, within(DELTA));
     }
 
     @Test
-    @DisplayName("Депозит с пустым полем — ошибка")
-    public void depositEmptyAmount() {
+    public void shouldRejectEmptyDepositAmount() {
         CreateUserRequest user = AdminSteps.createUser();
-        Selenide.open("/login");
-        $(Selectors.byAttribute("placeholder", "Username")).sendKeys(user.getUsername());
-        $(Selectors.byAttribute("placeholder", "Password")).sendKeys(user.getPassword());
-        $("button").click();
+        authAsUser(user);
 
-        $(Selectors.byText("➕ Create New Account")).click();
-        switchTo().alert().accept();
+        UserDashboard dashboard = new UserDashboard();
 
-        Selenide.open("/deposit");
-        Selenide.refresh();
-        Selenide.sleep(1000);
+        dashboard.open()
+                .createNewAccount()
+                .openDeposit()
+                .selectFirstAccount()
+                .submitDeposit();
 
-        $("select.account-selector").selectOption(1);
-        $(Selectors.byText("💵 Deposit")).click();
+        dashboard.checkAlertMessageAndAccept(
+                BankAlert.INVALID_DEPOSIT_AMOUNT.getMessage());
 
-        Alert error = switchTo().alert();
-        assertThat(error.getText()).contains("valid amount");
-        error.accept();
+        List<CreateAccountResponse> accounts =
+                new UserSteps(user.getUsername(), user.getPassword())
+                        .getAllAccounts();
 
-        // API-проверка
-        String authToken = new CrudRequester(RequestSpecs.unauthSpec(), Endpoint.LOGIN, ResponseSpecs.requestReturnsOK())
-                .post(LoginUserRequest.builder().username(user.getUsername()).password(user.getPassword()).build())
-                .extract().header("Authorization");
-        AccountInfoResponse[] accounts = given()
-                .spec(RequestSpecs.authSpec(authToken))
-                .get("http://localhost:4111/api/v1/customer/accounts")
-                .then().assertThat().statusCode(200)
-                .extract().as(AccountInfoResponse[].class);
-        assertThat(accounts).isNotEmpty();
-        assertThat(accounts[0].getBalance()).isZero();
+        assertThat(accounts).hasSize(1);
+        assertThat(accounts.getFirst().getBalance()).isZero();
     }
 
     @Test
-    @DisplayName("Депозит с отрицательной суммой — ошибка")
-    public void depositNegativeAmount() {
+    public void shouldRejectNegativeDepositAmount() {
         CreateUserRequest user = AdminSteps.createUser();
-        Selenide.open("/login");
-        $(Selectors.byAttribute("placeholder", "Username")).sendKeys(user.getUsername());
-        $(Selectors.byAttribute("placeholder", "Password")).sendKeys(user.getPassword());
-        $("button").click();
+        authAsUser(user);
 
-        $(Selectors.byText("➕ Create New Account")).click();
-        switchTo().alert().accept();
+        UserDashboard dashboard = new UserDashboard();
 
-        Selenide.open("/deposit");
-        Selenide.refresh();
-        Selenide.sleep(1000);
+        dashboard.open()
+                .createNewAccount()
+                .openDeposit()
+                .selectFirstAccount()
+                .enterAmount(SMALL_NEGATIVE_AMOUNT)
+                .submitDeposit();
 
-        $("select.account-selector").selectOption(1);
-        $("input.deposit-input").setValue("-100");
-        $(Selectors.byText("💵 Deposit")).click();
+        dashboard.checkAlertMessageAndAccept(
+                BankAlert.INVALID_DEPOSIT_AMOUNT.getMessage());
 
-        Alert error = switchTo().alert();
-        assertThat(error.getText()).contains("valid amount");
-        error.accept();
+        List<CreateAccountResponse> accounts =
+                new UserSteps(user.getUsername(), user.getPassword())
+                        .getAllAccounts();
 
-        // API-проверка
-        String authToken = new CrudRequester(RequestSpecs.unauthSpec(), Endpoint.LOGIN, ResponseSpecs.requestReturnsOK())
-                .post(LoginUserRequest.builder().username(user.getUsername()).password(user.getPassword()).build())
-                .extract().header("Authorization");
-        AccountInfoResponse[] accounts = given()
-                .spec(RequestSpecs.authSpec(authToken))
-                .get("http://localhost:4111/api/v1/customer/accounts")
-                .then().assertThat().statusCode(200)
-                .extract().as(AccountInfoResponse[].class);
-        assertThat(accounts).isNotEmpty();
-        assertThat(accounts[0].getBalance()).isZero();
+        assertThat(accounts).hasSize(1);
+        assertThat(accounts.getFirst().getBalance()).isZero();
     }
 
     @Test
-    @DisplayName("Депозит с суммой, превышающей лимит, — ошибка")
-    public void depositExceedsLimit() {
+    public void shouldRejectDepositExceedingLimit() {
         CreateUserRequest user = AdminSteps.createUser();
-        Selenide.open("/login");
-        $(Selectors.byAttribute("placeholder", "Username")).sendKeys(user.getUsername());
-        $(Selectors.byAttribute("placeholder", "Password")).sendKeys(user.getPassword());
-        $("button").click();
+        authAsUser(user);
 
-        $(Selectors.byText("➕ Create New Account")).click();
-        switchTo().alert().accept();
+        UserDashboard dashboard = new UserDashboard();
 
-        Selenide.open("/deposit");
-        Selenide.refresh();
-        Selenide.sleep(1000);
+        dashboard.open()
+                .createNewAccount()
+                .openDeposit()
+                .selectFirstAccount()
+                .enterAmount(FAR_ABOVE_LIMIT)
+                .submitDeposit();
 
-        $("select.account-selector").selectOption(1);
-        $("input.deposit-input").setValue("6000.00");
-        $(Selectors.byText("💵 Deposit")).click();
+        dashboard.checkAlertMessageAndAccept(
+                BankAlert.DEPOSIT_EXCEEDS_LIMIT.getMessage());
 
-        Alert error = switchTo().alert();
-        assertThat(error.getText()).contains("less or equal to 5000");
-        error.accept();
+        List<CreateAccountResponse> accounts =
+                new UserSteps(user.getUsername(), user.getPassword())
+                        .getAllAccounts();
 
-        // API-проверка
-        String authToken = new CrudRequester(RequestSpecs.unauthSpec(), Endpoint.LOGIN, ResponseSpecs.requestReturnsOK())
-                .post(LoginUserRequest.builder().username(user.getUsername()).password(user.getPassword()).build())
-                .extract().header("Authorization");
-        AccountInfoResponse[] accounts = given()
-                .spec(RequestSpecs.authSpec(authToken))
-                .get("http://localhost:4111/api/v1/customer/accounts")
-                .then().assertThat().statusCode(200)
-                .extract().as(AccountInfoResponse[].class);
-        assertThat(accounts).isNotEmpty();
-        assertThat(accounts[0].getBalance()).isZero();
+        assertThat(accounts).hasSize(1);
+        assertThat(accounts.getFirst().getBalance()).isZero();
     }
 }

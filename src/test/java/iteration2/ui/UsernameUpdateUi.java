@@ -1,217 +1,136 @@
 package iteration2.ui;
 
-import com.codeborne.selenide.Configuration;
-import com.codeborne.selenide.Selectors;
-import com.codeborne.selenide.Selenide;
-import models.AccountInfoResponse;
 import models.CreateUserRequest;
-import models.LoginUserRequest;
-import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
-import org.openqa.selenium.Alert;
-import requests.skelethon.Endpoint;
-import requests.skelethon.requesters.CrudRequester;
 import requests.steps.AdminSteps;
-import specs.RequestSpecs;
-import specs.ResponseSpecs;
+import requests.steps.UserSteps;
+import iteration1.ui.BaseUiTest;
+import org.junit.jupiter.api.Test;
+import requests.ui.pages.BankAlert;
+import requests.ui.pages.UserDashboard;
 
-import java.util.Map;
-
-import static com.codeborne.selenide.Selenide.$;
-import static com.codeborne.selenide.Selenide.switchTo;
-import static io.restassured.RestAssured.given;
+import static constants.TestConstants.*;
 import static org.assertj.core.api.Assertions.assertThat;
 
-public class UsernameUpdateUi {
+public class UsernameUpdateUi extends BaseUiTest {
 
-    @BeforeAll
-    public static void setupSelenoid() {
-        Configuration.remote = "http://localhost:4444/wd/hub";
-        Configuration.baseUrl = "http://192.168.0.103:3000";
-        Configuration.browser = "chrome";
-        Configuration.browserSize = "1920x1080";
-        Configuration.browserCapabilities.setCapability("selenoid:options",
-                Map.of("enableVNC", true, "enableLog", true));
+    private UserDashboard openProfile(CreateUserRequest user) {
+        authAsUser(user);
+        return new UserDashboard()
+                .open()
+                .openEditProfile();
     }
 
     @Test
-    @DisplayName("Успешное изменение имени")
-    public void updateNameValid() {
+    public void userCanUpdateName() {
         CreateUserRequest user = AdminSteps.createUser();
 
-        Selenide.open("/login");
-        $(Selectors.byAttribute("placeholder", "Username")).sendKeys(user.getUsername());
-        $(Selectors.byAttribute("placeholder", "Password")).sendKeys(user.getPassword());
-        $("button").click();
-        Selenide.sleep(1000);
+        openProfile(user)
+                .enterNewName(VALID_NAME_TWO_WORDS)
+                .saveChanges();
 
-        Selenide.open("/dashboard");
-        Selenide.sleep(2000);
+        new UserDashboard().checkAlertMessageAndAccept(
+                BankAlert.NAME_UPDATED.getMessage()
+        );
 
-        Selenide.open("/edit-profile");
-        Selenide.sleep(2000);
+        String actualName = new UserSteps(user.getUsername(), user.getPassword())
+                .getProfile()
+                .getName();
 
-        $("[placeholder='Enter new name']").setValue("John Doe");
-        $(Selectors.byText("💾 Save Changes")).click();
-
-        Alert alert = switchTo().alert();
-        assertThat(alert.getText()).contains("updated");
-        alert.accept();
-
-        // API-проверка
-        String authToken = new CrudRequester(RequestSpecs.unauthSpec(), Endpoint.LOGIN, ResponseSpecs.requestReturnsOK())
-                .post(LoginUserRequest.builder().username(user.getUsername()).password(user.getPassword()).build())
-                .extract().header("Authorization");
-        AccountInfoResponse[] accounts = given()
-                .spec(RequestSpecs.authSpec(authToken))
-                .get("http://localhost:4111/api/v1/customer/accounts")
-                .then().assertThat().statusCode(200)
-                .extract().as(AccountInfoResponse[].class);
-        assertThat(accounts).isNotEmpty();
+        assertThat(actualName).isEqualTo(VALID_NAME_TWO_WORDS);
     }
 
     @Test
-    @DisplayName("Изменение имени на пустое — ошибка")
-    public void updateNameEmpty() {
+    public void shouldRejectEmptyName() {
         CreateUserRequest user = AdminSteps.createUser();
 
-        Selenide.open("/login");
-        $(Selectors.byAttribute("placeholder", "Username")).sendKeys(user.getUsername());
-        $(Selectors.byAttribute("placeholder", "Password")).sendKeys(user.getPassword());
-        $("button").click();
-        Selenide.sleep(1000);
+        openProfile(user)
+                .enterNewName(INVALID_NAME_EMPTY)
+                .saveChanges();
 
-        Selenide.open("/dashboard");
-        Selenide.sleep(2000);
+        new UserDashboard().checkAlertMessageAndAccept(
+                BankAlert.VALID_NAME_REQUIRED.getMessage()
+        );
 
-        Selenide.open("/edit-profile");
-        Selenide.sleep(2000);
+        String actualName = new UserSteps(user.getUsername(), user.getPassword())
+                .getProfile()
+                .getName();
 
-        $("[placeholder='Enter new name']").setValue("");
-        $(Selectors.byText("💾 Save Changes")).click();
-
-        Alert error = switchTo().alert();
-        assertThat(error.getText()).contains("valid");
-        error.accept();
-
-        // API-проверка
-        String authToken = new CrudRequester(RequestSpecs.unauthSpec(), Endpoint.LOGIN, ResponseSpecs.requestReturnsOK())
-                .post(LoginUserRequest.builder().username(user.getUsername()).password(user.getPassword()).build())
-                .extract().header("Authorization");
-        AccountInfoResponse[] accounts = given()
-                .spec(RequestSpecs.authSpec(authToken))
-                .get("http://localhost:4111/api/v1/customer/accounts")
-                .then().assertThat().statusCode(200)
-                .extract().as(AccountInfoResponse[].class);
-        assertThat(accounts).isNotEmpty();
+        assertThat(actualName).isNull();
     }
 
     @Test
-    @DisplayName("Изменение имени на слишком короткое — ошибка")
-    public void updateNameTooShort() {
+    public void shouldRejectOneWordName() {
         CreateUserRequest user = AdminSteps.createUser();
 
-        Selenide.open("/login");
-        $(Selectors.byAttribute("placeholder", "Username")).sendKeys(user.getUsername());
-        $(Selectors.byAttribute("placeholder", "Password")).sendKeys(user.getPassword());
-        $("button").click();
-        Selenide.sleep(1000);
+        openProfile(user)
+                .enterNewName(INVALID_NAME_ONE_WORD)
+                .saveChanges();
 
-        Selenide.open("/dashboard");
-        Selenide.sleep(2000);
+        new UserDashboard().checkAlertMessageAndAccept(
+                BankAlert.INVALID_NAME.getMessage()
+        );
 
-        Selenide.open("/edit-profile");
-        Selenide.sleep(2000);
+        String actualName = new UserSteps(user.getUsername(), user.getPassword())
+                .getProfile()
+                .getName();
 
-        $("[placeholder='Enter new name']").setValue("A");
-        $(Selectors.byText("💾 Save Changes")).click();
-
-        Alert error = switchTo().alert();
-        assertThat(error.getText()).contains("must contain two words");
-        error.accept();
-
-        // API-проверка
-        String authToken = new CrudRequester(RequestSpecs.unauthSpec(), Endpoint.LOGIN, ResponseSpecs.requestReturnsOK())
-                .post(LoginUserRequest.builder().username(user.getUsername()).password(user.getPassword()).build())
-                .extract().header("Authorization");
-        AccountInfoResponse[] accounts = given()
-                .spec(RequestSpecs.authSpec(authToken))
-                .get("http://localhost:4111/api/v1/customer/accounts")
-                .then().assertThat().statusCode(200)
-                .extract().as(AccountInfoResponse[].class);
-        assertThat(accounts).isNotEmpty();
+        assertThat(actualName).isNull();
     }
 
     @Test
-    @DisplayName("Изменение имени на спецсимволы — ошибка")
-    public void updateNameSpecialChars() {
+    public void shouldRejectNameWithSpecialChars() {
         CreateUserRequest user = AdminSteps.createUser();
 
-        Selenide.open("/login");
-        $(Selectors.byAttribute("placeholder", "Username")).sendKeys(user.getUsername());
-        $(Selectors.byAttribute("placeholder", "Password")).sendKeys(user.getPassword());
-        $("button").click();
-        Selenide.sleep(1000);
+        openProfile(user)
+                .enterNewName(INVALID_NAME_SPECIAL_CHARS)
+                .saveChanges();
 
-        Selenide.open("/dashboard");
-        Selenide.sleep(2000);
+        new UserDashboard().checkAlertMessageAndAccept(
+                BankAlert.INVALID_NAME.getMessage()
+        );
 
-        Selenide.open("/edit-profile");
-        Selenide.sleep(2000);
+        String actualName = new UserSteps(user.getUsername(), user.getPassword())
+                .getProfile()
+                .getName();
 
-        $("[placeholder='Enter new name']").setValue("John@Doe");
-        $(Selectors.byText("💾 Save Changes")).click();
-
-        Alert error = switchTo().alert();
-        assertThat(error.getText()).contains("must contain two words");
-        error.accept();
-
-        // API-проверка
-        String authToken = new CrudRequester(RequestSpecs.unauthSpec(), Endpoint.LOGIN, ResponseSpecs.requestReturnsOK())
-                .post(LoginUserRequest.builder().username(user.getUsername()).password(user.getPassword()).build())
-                .extract().header("Authorization");
-        AccountInfoResponse[] accounts = given()
-                .spec(RequestSpecs.authSpec(authToken))
-                .get("http://localhost:4111/api/v1/customer/accounts")
-                .then().assertThat().statusCode(200)
-                .extract().as(AccountInfoResponse[].class);
-        assertThat(accounts).isNotEmpty();
+        assertThat(actualName).isNull();
     }
 
     @Test
-    @DisplayName("Изменение имени на пробелы — ошибка")
-    public void updateNameOnlySpaces() {
+    public void shouldRejectNameWithNumbers() {
         CreateUserRequest user = AdminSteps.createUser();
 
-        Selenide.open("/login");
-        $(Selectors.byAttribute("placeholder", "Username")).sendKeys(user.getUsername());
-        $(Selectors.byAttribute("placeholder", "Password")).sendKeys(user.getPassword());
-        $("button").click();
-        Selenide.sleep(1000);
+        openProfile(user)
+                .enterNewName(INVALID_NAME_NUMBERS)
+                .saveChanges();
 
-        Selenide.open("/dashboard");
-        Selenide.sleep(2000);
+        new UserDashboard().checkAlertMessageAndAccept(
+                BankAlert.INVALID_NAME.getMessage()
+        );
 
-        Selenide.open("/edit-profile");
-        Selenide.sleep(2000);
+        String actualName = new UserSteps(user.getUsername(), user.getPassword())
+                .getProfile()
+                .getName();
 
-        $("[placeholder='Enter new name']").setValue("   ");
-        $(Selectors.byText("💾 Save Changes")).click();
+        assertThat(actualName).isNull();
+    }
 
-        Alert error = switchTo().alert();
-        assertThat(error.getText()).contains("must contain two words");
-        error.accept();
+    @Test
+    public void shouldRejectNameWithOnlySpaces() {
+        CreateUserRequest user = AdminSteps.createUser();
 
-        // API-проверка
-        String authToken = new CrudRequester(RequestSpecs.unauthSpec(), Endpoint.LOGIN, ResponseSpecs.requestReturnsOK())
-                .post(LoginUserRequest.builder().username(user.getUsername()).password(user.getPassword()).build())
-                .extract().header("Authorization");
-        AccountInfoResponse[] accounts = given()
-                .spec(RequestSpecs.authSpec(authToken))
-                .get("http://localhost:4111/api/v1/customer/accounts")
-                .then().assertThat().statusCode(200)
-                .extract().as(AccountInfoResponse[].class);
-        assertThat(accounts).isNotEmpty();
+        openProfile(user)
+                .enterNewName(INVALID_NAME_SPACES)
+                .saveChanges();
+
+        new UserDashboard().checkAlertMessageAndAccept(
+                BankAlert.VALID_NAME_REQUIRED.getMessage()
+        );
+
+        String actualName = new UserSteps(user.getUsername(), user.getPassword())
+                .getProfile()
+                .getName();
+
+        assertThat(actualName).isNull();
     }
 }
