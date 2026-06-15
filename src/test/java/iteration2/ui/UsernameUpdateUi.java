@@ -26,11 +26,10 @@ public class UsernameUpdateUi extends BaseUiTest {
 
         openProfile(user)
                 .enterNewName(VALID_NAME_TWO_WORDS)
-                .saveChanges();
-
-        new UserDashboard().checkAlertMessageAndAccept(
-                BankAlert.NAME_UPDATED.getMessage()
-        );
+                .saveChanges()
+                .checkAlertMessageAndAccept(
+                        BankAlert.NAME_UPDATED.getMessage()
+                );
 
         String actualName = new UserSteps(user.getUsername(), user.getPassword())
                 .getProfile()
@@ -45,11 +44,10 @@ public class UsernameUpdateUi extends BaseUiTest {
 
         openProfile(user)
                 .enterNewName(INVALID_NAME_EMPTY)
-                .saveChanges();
-
-        new UserDashboard().checkAlertMessageAndAccept(
-                BankAlert.VALID_NAME_REQUIRED.getMessage()
-        );
+                .saveChanges()
+                .checkAlertMessageAndAccept(
+                        BankAlert.VALID_NAME_REQUIRED.getMessage()
+                );
 
         String actualName = new UserSteps(user.getUsername(), user.getPassword())
                 .getProfile()
@@ -64,11 +62,10 @@ public class UsernameUpdateUi extends BaseUiTest {
 
         openProfile(user)
                 .enterNewName(INVALID_NAME_ONE_WORD)
-                .saveChanges();
-
-        new UserDashboard().checkAlertMessageAndAccept(
-                BankAlert.INVALID_NAME.getMessage()
-        );
+                .saveChanges()
+                .checkAlertMessageAndAccept(
+                        BankAlert.INVALID_NAME.getMessage()
+                );
 
         String actualName = new UserSteps(user.getUsername(), user.getPassword())
                 .getProfile()
@@ -83,11 +80,10 @@ public class UsernameUpdateUi extends BaseUiTest {
 
         openProfile(user)
                 .enterNewName(INVALID_NAME_SPECIAL_CHARS)
-                .saveChanges();
-
-        new UserDashboard().checkAlertMessageAndAccept(
-                BankAlert.INVALID_NAME.getMessage()
-        );
+                .saveChanges()
+                .checkAlertMessageAndAccept(
+                        BankAlert.INVALID_NAME.getMessage()
+                );
 
         String actualName = new UserSteps(user.getUsername(), user.getPassword())
                 .getProfile()
@@ -102,11 +98,10 @@ public class UsernameUpdateUi extends BaseUiTest {
 
         openProfile(user)
                 .enterNewName(INVALID_NAME_NUMBERS)
-                .saveChanges();
-
-        new UserDashboard().checkAlertMessageAndAccept(
-                BankAlert.INVALID_NAME.getMessage()
-        );
+                .saveChanges()
+                .checkAlertMessageAndAccept(
+                        BankAlert.INVALID_NAME.getMessage()
+                );
 
         String actualName = new UserSteps(user.getUsername(), user.getPassword())
                 .getProfile()
@@ -121,11 +116,10 @@ public class UsernameUpdateUi extends BaseUiTest {
 
         openProfile(user)
                 .enterNewName(INVALID_NAME_SPACES)
-                .saveChanges();
-
-        new UserDashboard().checkAlertMessageAndAccept(
-                BankAlert.VALID_NAME_REQUIRED.getMessage()
-        );
+                .saveChanges()
+                .checkAlertMessageAndAccept(
+                        BankAlert.VALID_NAME_REQUIRED.getMessage()
+                );
 
         String actualName = new UserSteps(user.getUsername(), user.getPassword())
                 .getProfile()

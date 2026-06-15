@@ -48,18 +48,17 @@ public class TransferTestUi extends BaseUiTest {
                 .createNewAccount();
     }
 
-    private void depositToFirstAccount(
+    private UserDashboard depositToFirstAccount(
             UserDashboard dashboard,
             double amount
     ) {
-        dashboard.openDeposit()
+        return dashboard.openDeposit()
                 .selectFirstAccount()
                 .enterAmount(amount)
-                .submitDeposit();
-
-        dashboard.checkAlertMessageAndAccept(
-                BankAlert.DEPOSIT_SUCCESSFUL.getMessage()
-        );
+                .submitDeposit()
+                .checkAlertMessageAndAccept(
+                        BankAlert.DEPOSIT_SUCCESSFUL.getMessage()
+                );
     }
 
     @Test
@@ -75,50 +74,29 @@ public class TransferTestUi extends BaseUiTest {
         CreateAccountResponse sender = getSender(accounts);
         CreateAccountResponse receiver = getReceiver(accounts);
 
-        depositToFirstAccount(
-                dashboard,
-                TRANSFER_AMOUNT_LARGE
-        );
-
-        dashboard.openTransfer()
+        depositToFirstAccount(dashboard, TRANSFER_AMOUNT_LARGE)
+                .openTransfer()
                 .selectFirstAccount()
                 .enterRecipientName(user.getUsername())
                 .enterRecipientAccount(receiver.getAccountNumber())
                 .enterTransferAmount(TRANSFER_AMOUNT_SMALL)
                 .confirm()
-                .submitTransfer();
+                .submitTransfer()
+                .checkAlertMessageAndAccept(
+                        BankAlert.TRANSFER_SUCCESSFUL.getMessage()
+                );
 
-        dashboard.checkAlertMessageAndAccept(
-                BankAlert.TRANSFER_SUCCESSFUL.getMessage()
-        );
-
-        List<CreateAccountResponse> accountsAfter =
-                getAccounts(user);
+        List<CreateAccountResponse> accountsAfter = getAccounts(user);
 
         CreateAccountResponse senderAfter =
-                getAccountByNumber(
-                        accountsAfter,
-                        sender.getAccountNumber()
-                );
-
+                getAccountByNumber(accountsAfter, sender.getAccountNumber());
         CreateAccountResponse receiverAfter =
-                getAccountByNumber(
-                        accountsAfter,
-                        receiver.getAccountNumber()
-                );
+                getAccountByNumber(accountsAfter, receiver.getAccountNumber());
 
         assertThat(senderAfter.getBalance())
-                .isCloseTo(
-                        TRANSFER_AMOUNT_LARGE
-                                - TRANSFER_AMOUNT_SMALL,
-                        within(DELTA)
-                );
-
+                .isCloseTo(TRANSFER_AMOUNT_LARGE - TRANSFER_AMOUNT_SMALL, within(DELTA));
         assertThat(receiverAfter.getBalance())
-                .isCloseTo(
-                        TRANSFER_AMOUNT_SMALL,
-                        within(DELTA)
-                );
+                .isCloseTo(TRANSFER_AMOUNT_SMALL, within(DELTA));
     }
 
     @Test
@@ -130,14 +108,9 @@ public class TransferTestUi extends BaseUiTest {
 
         createTwoAccounts(dashboard);
 
-        List<CreateAccountResponse> accounts =
-                getAccounts(user);
-
-        CreateAccountResponse sender =
-                getSender(accounts);
-
-        CreateAccountResponse receiver =
-                getReceiver(accounts);
+        List<CreateAccountResponse> accounts = getAccounts(user);
+        CreateAccountResponse sender = getSender(accounts);
+        CreateAccountResponse receiver = getReceiver(accounts);
 
         dashboard.openTransfer()
                 .selectFirstAccount()
@@ -145,32 +118,20 @@ public class TransferTestUi extends BaseUiTest {
                 .enterRecipientAccount(receiver.getAccountNumber())
                 .enterTransferAmount(TRANSFER_AMOUNT_SMALL)
                 .confirm()
-                .submitTransfer();
+                .submitTransfer()
+                .checkAlertMessageAndAccept(
+                        BankAlert.INSUFFICIENT_FUNDS.getMessage()
+                );
 
-        dashboard.checkAlertMessageAndAccept(
-                BankAlert.INSUFFICIENT_FUNDS.getMessage()
-        );
-
-        List<CreateAccountResponse> accountsAfter =
-                getAccounts(user);
+        List<CreateAccountResponse> accountsAfter = getAccounts(user);
 
         CreateAccountResponse senderAfter =
-                getAccountByNumber(
-                        accountsAfter,
-                        sender.getAccountNumber()
-                );
-
+                getAccountByNumber(accountsAfter, sender.getAccountNumber());
         CreateAccountResponse receiverAfter =
-                getAccountByNumber(
-                        accountsAfter,
-                        receiver.getAccountNumber()
-                );
+                getAccountByNumber(accountsAfter, receiver.getAccountNumber());
 
-        assertThat(senderAfter.getBalance())
-                .isZero();
-
-        assertThat(receiverAfter.getBalance())
-                .isZero();
+        assertThat(senderAfter.getBalance()).isZero();
+        assertThat(receiverAfter.getBalance()).isZero();
     }
 
     @Test
@@ -178,112 +139,68 @@ public class TransferTestUi extends BaseUiTest {
         CreateUserRequest user = AdminSteps.createUser();
         authAsUser(user);
 
-        UserDashboard dashboard =
-                new UserDashboard();
+        UserDashboard dashboard = new UserDashboard();
 
         createTwoAccounts(dashboard);
 
-        List<CreateAccountResponse> accounts =
-                getAccounts(user);
+        List<CreateAccountResponse> accounts = getAccounts(user);
+        CreateAccountResponse sender = getSender(accounts);
+        CreateAccountResponse receiver = getReceiver(accounts);
 
-        CreateAccountResponse sender =
-                getSender(accounts);
-
-        CreateAccountResponse receiver =
-                getReceiver(accounts);
-
-        depositToFirstAccount(
-                dashboard,
-                TRANSFER_AMOUNT_LARGE
-        );
-
-        dashboard.openTransfer()
+        depositToFirstAccount(dashboard, TRANSFER_AMOUNT_LARGE)
+                .openTransfer()
                 .selectFirstAccount()
                 .enterRecipientName(user.getUsername())
                 .enterRecipientAccount(receiver.getAccountNumber())
                 .enterTransferAmount(TRANSFER_AMOUNT_SMALL)
-                .submitTransfer();
+                .submitTransfer()
+                .checkAlertMessageAndAccept(
+                        BankAlert.CONFIRM_TRANSFER.getMessage()
+                );
 
-        dashboard.checkAlertMessageAndAccept(
-                BankAlert.CONFIRM_TRANSFER.getMessage()
-        );
-
-        List<CreateAccountResponse> accountsAfter =
-                getAccounts(user);
+        List<CreateAccountResponse> accountsAfter = getAccounts(user);
 
         CreateAccountResponse senderAfter =
-                getAccountByNumber(
-                        accountsAfter,
-                        sender.getAccountNumber()
-                );
-
+                getAccountByNumber(accountsAfter, sender.getAccountNumber());
         CreateAccountResponse receiverAfter =
-                getAccountByNumber(
-                        accountsAfter,
-                        receiver.getAccountNumber()
-                );
+                getAccountByNumber(accountsAfter, receiver.getAccountNumber());
 
         assertThat(senderAfter.getBalance())
-                .isCloseTo(
-                        TRANSFER_AMOUNT_LARGE,
-                        within(DELTA)
-                );
-
-        assertThat(receiverAfter.getBalance())
-                .isZero();
+                .isCloseTo(TRANSFER_AMOUNT_LARGE, within(DELTA));
+        assertThat(receiverAfter.getBalance()).isZero();
     }
 
     @Test
     public void shouldRejectTransferWithEmptyAmount() {
-        CreateUserRequest user =
-                AdminSteps.createUser();
-
+        CreateUserRequest user = AdminSteps.createUser();
         authAsUser(user);
 
-        UserDashboard dashboard =
-                new UserDashboard();
+        UserDashboard dashboard = new UserDashboard();
 
         createTwoAccounts(dashboard);
 
-        List<CreateAccountResponse> accounts =
-                getAccounts(user);
-
-        CreateAccountResponse sender =
-                getSender(accounts);
-
-        CreateAccountResponse receiver =
-                getReceiver(accounts);
+        List<CreateAccountResponse> accounts = getAccounts(user);
+        CreateAccountResponse sender = getSender(accounts);
+        CreateAccountResponse receiver = getReceiver(accounts);
 
         dashboard.openTransfer()
                 .selectFirstAccount()
                 .enterRecipientName(user.getUsername())
                 .enterRecipientAccount(receiver.getAccountNumber())
                 .confirm()
-                .submitTransfer();
+                .submitTransfer()
+                .checkAlertMessageAndAccept(
+                        BankAlert.FILL_ALL_FIELDS.getMessage()
+                );
 
-        dashboard.checkAlertMessageAndAccept(
-                BankAlert.FILL_ALL_FIELDS.getMessage()
-        );
-
-        List<CreateAccountResponse> accountsAfter =
-                getAccounts(user);
+        List<CreateAccountResponse> accountsAfter = getAccounts(user);
 
         CreateAccountResponse senderAfter =
-                getAccountByNumber(
-                        accountsAfter,
-                        sender.getAccountNumber()
-                );
-
+                getAccountByNumber(accountsAfter, sender.getAccountNumber());
         CreateAccountResponse receiverAfter =
-                getAccountByNumber(
-                        accountsAfter,
-                        receiver.getAccountNumber()
-                );
+                getAccountByNumber(accountsAfter, receiver.getAccountNumber());
 
-        assertThat(senderAfter.getBalance())
-                .isZero();
-
-        assertThat(receiverAfter.getBalance())
-                .isZero();
+        assertThat(senderAfter.getBalance()).isZero();
+        assertThat(receiverAfter.getBalance()).isZero();
     }
 }

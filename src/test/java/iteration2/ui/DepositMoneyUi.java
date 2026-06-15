@@ -26,17 +26,16 @@ public class DepositMoneyUi extends BaseUiTest {
         CreateUserRequest user = AdminSteps.createUser();
         authAsUser(user);
 
-        UserDashboard dashboard = new UserDashboard();
-
-        dashboard.open()
+        new UserDashboard()
+                .open()
                 .createNewAccount()
                 .openDeposit()
                 .selectFirstAccount()
                 .enterAmount(TRANSFER_AMOUNT_MEDIUM)
-                .submitDeposit();
-
-        dashboard.checkAlertMessageAndAccept(
-                BankAlert.DEPOSIT_SUCCESSFUL.getMessage());
+                .submitDeposit()
+                .checkAlertMessageAndAccept(
+                        BankAlert.DEPOSIT_SUCCESSFUL.getMessage()
+                );
 
         List<CreateAccountResponse> accounts =
                 new UserSteps(user.getUsername(), user.getPassword())
@@ -52,17 +51,16 @@ public class DepositMoneyUi extends BaseUiTest {
         CreateUserRequest user = AdminSteps.createUser();
         authAsUser(user);
 
-        UserDashboard dashboard = new UserDashboard();
-
-        dashboard.open()
+        new UserDashboard()
+                .open()
                 .createNewAccount()
                 .openDeposit()
                 .selectFirstAccount()
                 .enterAmount(MIN_VALID_DEPOSIT)
-                .submitDeposit();
-
-        dashboard.checkAlertMessageAndAccept(
-                BankAlert.DEPOSIT_SUCCESSFUL.getMessage());
+                .submitDeposit()
+                .checkAlertMessageAndAccept(
+                        BankAlert.DEPOSIT_SUCCESSFUL.getMessage()
+                );
 
         List<CreateAccountResponse> accounts =
                 new UserSteps(user.getUsername(), user.getPassword())
@@ -78,17 +76,16 @@ public class DepositMoneyUi extends BaseUiTest {
         CreateUserRequest user = AdminSteps.createUser();
         authAsUser(user);
 
-        UserDashboard dashboard = new UserDashboard();
-
-        dashboard.open()
+        new UserDashboard()
+                .open()
                 .createNewAccount()
                 .openDeposit()
                 .selectFirstAccount()
                 .enterAmount(MAX_DEPOSIT_LIMIT)
-                .submitDeposit();
-
-        dashboard.checkAlertMessageAndAccept(
-                BankAlert.DEPOSIT_SUCCESSFUL.getMessage());
+                .submitDeposit()
+                .checkAlertMessageAndAccept(
+                        BankAlert.DEPOSIT_SUCCESSFUL.getMessage()
+                );
 
         List<CreateAccountResponse> accounts =
                 new UserSteps(user.getUsername(), user.getPassword())
@@ -107,17 +104,16 @@ public class DepositMoneyUi extends BaseUiTest {
         CreateUserRequest user = AdminSteps.createUser();
         authAsUser(user);
 
-        UserDashboard dashboard = new UserDashboard();
-
-        dashboard.open()
+        new UserDashboard()
+                .open()
                 .createNewAccount()
                 .openDeposit()
                 .selectFirstAccount()
                 .enterAmount(amount)
-                .submitDeposit();
-
-        dashboard.checkAlertMessageAndAccept(
-                BankAlert.DEPOSIT_SUCCESSFUL.getMessage());
+                .submitDeposit()
+                .checkAlertMessageAndAccept(
+                        BankAlert.DEPOSIT_SUCCESSFUL.getMessage()
+                );
 
         List<CreateAccountResponse> accounts =
                 new UserSteps(user.getUsername(), user.getPassword())
@@ -144,16 +140,18 @@ public class DepositMoneyUi extends BaseUiTest {
                 .openDeposit()
                 .selectFirstAccount()
                 .enterAmount(firstAmount)
-                .submitDeposit();
-        dashboard.checkAlertMessageAndAccept(
-                BankAlert.DEPOSIT_SUCCESSFUL.getMessage());
+                .submitDeposit()
+                .checkAlertMessageAndAccept(
+                        BankAlert.DEPOSIT_SUCCESSFUL.getMessage()
+                );
 
         dashboard.openDeposit()
                 .selectFirstAccount()
                 .enterAmount(secondAmount)
-                .submitDeposit();
-        dashboard.checkAlertMessageAndAccept(
-                BankAlert.DEPOSIT_SUCCESSFUL.getMessage());
+                .submitDeposit()
+                .checkAlertMessageAndAccept(
+                        BankAlert.DEPOSIT_SUCCESSFUL.getMessage()
+                );
 
         List<CreateAccountResponse> accounts =
                 new UserSteps(user.getUsername(), user.getPassword())
@@ -169,16 +167,15 @@ public class DepositMoneyUi extends BaseUiTest {
         CreateUserRequest user = AdminSteps.createUser();
         authAsUser(user);
 
-        UserDashboard dashboard = new UserDashboard();
-
-        dashboard.open()
+        new UserDashboard()
+                .open()
                 .createNewAccount()
                 .openDeposit()
                 .selectFirstAccount()
-                .submitDeposit();
-
-        dashboard.checkAlertMessageAndAccept(
-                BankAlert.INVALID_DEPOSIT_AMOUNT.getMessage());
+                .submitDeposit()
+                .checkAlertMessageAndAccept(
+                        BankAlert.INVALID_DEPOSIT_AMOUNT.getMessage()
+                );
 
         List<CreateAccountResponse> accounts =
                 new UserSteps(user.getUsername(), user.getPassword())
@@ -193,17 +190,16 @@ public class DepositMoneyUi extends BaseUiTest {
         CreateUserRequest user = AdminSteps.createUser();
         authAsUser(user);
 
-        UserDashboard dashboard = new UserDashboard();
-
-        dashboard.open()
+        new UserDashboard()
+                .open()
                 .createNewAccount()
                 .openDeposit()
                 .selectFirstAccount()
                 .enterAmount(SMALL_NEGATIVE_AMOUNT)
-                .submitDeposit();
-
-        dashboard.checkAlertMessageAndAccept(
-                BankAlert.INVALID_DEPOSIT_AMOUNT.getMessage());
+                .submitDeposit()
+                .checkAlertMessageAndAccept(
+                        BankAlert.INVALID_DEPOSIT_AMOUNT.getMessage()
+                );
 
         List<CreateAccountResponse> accounts =
                 new UserSteps(user.getUsername(), user.getPassword())
@@ -218,17 +214,16 @@ public class DepositMoneyUi extends BaseUiTest {
         CreateUserRequest user = AdminSteps.createUser();
         authAsUser(user);
 
-        UserDashboard dashboard = new UserDashboard();
-
-        dashboard.open()
+        new UserDashboard()
+                .open()
                 .createNewAccount()
                 .openDeposit()
                 .selectFirstAccount()
                 .enterAmount(FAR_ABOVE_LIMIT)
-                .submitDeposit();
-
-        dashboard.checkAlertMessageAndAccept(
-                BankAlert.DEPOSIT_EXCEEDS_LIMIT.getMessage());
+                .submitDeposit()
+                .checkAlertMessageAndAccept(
+                        BankAlert.DEPOSIT_EXCEEDS_LIMIT.getMessage()
+                );
 
         List<CreateAccountResponse> accounts =
                 new UserSteps(user.getUsername(), user.getPassword())
