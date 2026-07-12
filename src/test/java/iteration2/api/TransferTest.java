@@ -1,109 +1,164 @@
-package iteration2.api;
+package iteration2.ui;
 
-import iteration2.fixtures.TestAccounts;
-import org.junit.jupiter.api.*;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.MethodSource;
-import requests.LoginUserRequester;
+import iteration1.ui.BaseUiTest;
+import models.CreateAccountResponse;
+import models.CreateUserRequest;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
 import requests.steps.AdminSteps;
-import specs.RequestSpecs;
-import specs.ResponseSpecs;
+import requests.steps.UserSteps;
+import requests.ui.pages.BankAlert;
+import requests.ui.pages.UserDashboard;
 
-import java.util.Random;
-import java.util.stream.Stream;
+import java.util.List;
 
 import static constants.TestConstants.*;
-import static iteration2.fixtures.TestAccounts.MIN_TRANSFER;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.within;
 
-@DisplayName("Переводы между счетами — Senior Level")
-public class TransferTest {
+public class TransferTest extends BaseUiTest {
 
-    private static final Random RANDOM = new Random();
-
-    private String authToken;
-    private TestAccounts accounts;
-    private Long senderAccountId;
-    private Long receiverAccountId;
-    private Long nonExistingAccountId;
-    private Double initialBalance;
-
-    @BeforeEach
-    void setup() {
-        var user = AdminSteps.createUser();
-        authToken = login(user.getUsername(), user.getPassword());
-
-        accounts = new TestAccounts(authToken);
-        senderAccountId = accounts.createAccount();
-        receiverAccountId = accounts.createAccount();
-        nonExistingAccountId = NON_EXISTENT_ACCOUNT_ID;
-
-        initialBalance = generateInitialBalance();
-        accounts.deposit(senderAccountId, initialBalance);
+    private List<CreateAccountResponse> getAccounts(CreateUserRequest user) {
+        return new UserSteps(user.getUsername(), user.getPassword()).getAllAccounts();
     }
 
-    @AfterEach
-    void cleanup() {
-        accounts.cleanup();
+    private CreateAccountResponse getAccountByNumber(List<CreateAccountResponse> accounts, String accountNumber) {
+        return accounts.stream()
+                .filter(a -> a.getAccountNumber().equals(accountNumber))
+                .findFirst()
+                .orElseThrow();
     }
 
-    @ParameterizedTest(name = "Перевод {0} должен пройти успешно")
-    @MethodSource("validTransferAmounts")
-    void shouldSuccessfullyTransferMoney(double amount) {
-        accounts.transfer(senderAccountId, receiverAccountId, amount)
-                .expectSuccess();
+    private void createTwoAccounts() {
+        new UserDashboard()
+                .open()
+                .createNewAccount()
+                .createNewAccount();
     }
 
-    private static Stream<Double> validTransferAmounts() {
-        return Stream.of(
-                MIN_TRANSFER,
-                TRANSFER_AMOUNT_MEDIUM,
-                TRANSFER_AMOUNT_LARGE,
-                TRANSFER_AMOUNT_MAX
-        );
-    }
-
-    @ParameterizedTest(name = "Сумма {0} должна быть отклонена")
-    @MethodSource("invalidTransferAmounts")
-    void shouldRejectInvalidAmounts(double amount) {
-        accounts.transfer(senderAccountId, receiverAccountId, amount)
-                .expectError(ERROR_INVALID_AMOUNT);
-    }
-
-    private static Stream<Double> invalidTransferAmounts() {
-        return Stream.of(
-                ZERO_AMOUNT,
-                SMALL_NEGATIVE_AMOUNT,
-                MEDIUM_NEGATIVE_AMOUNT,
-                LARGE_NEGATIVE_AMOUNT
-        );
+    private void makeDeposit(double amount) {
+        new UserDashboard()
+                .openDeposit()
+                .selectFirstAccount()
+                .enterAmount(amount)
+                .submitDeposit()
+                .checkAlertMessageAndAccept(BankAlert.DEPOSIT_SUCCESSFUL.getMessage());
     }
 
     @Test
-    void shouldRejectTransferExceedingBalance() {
-        double transferAmount = initialBalance + EXCEED_BALANCE_AMOUNT;
+    @DisplayName("User can transfer money")
+    public void userCanTransferMoney() {
+        CreateUserRequest user = AdminSteps.createUser();
+        authAsUser(user);
+        createTwoAccounts();
 
-        accounts.transfer(senderAccountId, receiverAccountId, transferAmount)
-                .expectError(ERROR_INSUFFICIENT_FUNDS);
+        List<CreateAccountResponse> accounts = getAccounts(user);
+        CreateAccountResponse sender = accounts.getFirst();
+        CreateAccountResponse receiver = accounts.get(1);
+
+        makeDeposit(TRANSFER_AMOUNT_LARGE);
+
+        new UserDashboard()
+                .openTransfer()
+                .selectFirstAccount()
+                .enterRecipientName(user.getUsername())
+                .enterRecipientAccount(receiver.getAccountNumber())
+                .enterTransferAmount(TRANSFER_AMOUNT_SMALL)
+                .confirm()
+                .submitTransfer()
+                .checkAlertMessageAndAccept(BankAlert.TRANSFER_SUCCESSFUL.getMessage());
+
+        List<CreateAccountResponse> accountsAfter = getAccounts(user);
+        CreateAccountResponse senderAfter = getAccountByNumber(accountsAfter, sender.getAccountNumber());
+        CreateAccountResponse receiverAfter = getAccountByNumber(accountsAfter, receiver.getAccountNumber());
+
+        assertThat(senderAfter.getBalance())
+                .isCloseTo(TRANSFER_AMOUNT_LARGE - TRANSFER_AMOUNT_SMALL, within(DELTA));
+        assertThat(receiverAfter.getBalance())
+                .isCloseTo(TRANSFER_AMOUNT_SMALL, within(DELTA));
     }
 
     @Test
-    void shouldRejectTransferToNonExistingAccount() {
-        accounts.transfer(senderAccountId, nonExistingAccountId, TRANSFER_AMOUNT_SMALL)
-                .expectError(ERROR_ACCOUNT_NOT_FOUND);
+    @DisplayName("Should reject transfer with insufficient funds")
+    public void shouldRejectTransferWithInsufficientFunds() {
+        CreateUserRequest user = AdminSteps.createUser();
+        authAsUser(user);
+        createTwoAccounts();
+
+        List<CreateAccountResponse> accounts = getAccounts(user);
+        CreateAccountResponse sender = accounts.getFirst();
+        CreateAccountResponse receiver = accounts.get(1);
+
+        new UserDashboard()
+                .openTransfer()
+                .selectFirstAccount()
+                .enterRecipientName(user.getUsername())
+                .enterRecipientAccount(receiver.getAccountNumber())
+                .enterTransferAmount(TRANSFER_AMOUNT_SMALL)
+                .confirm()
+                .submitTransfer();
+
+        List<CreateAccountResponse> accountsAfter = getAccounts(user);
+        CreateAccountResponse senderAfter = getAccountByNumber(accountsAfter, sender.getAccountNumber());
+        CreateAccountResponse receiverAfter = getAccountByNumber(accountsAfter, receiver.getAccountNumber());
+
+        assertThat(senderAfter.getBalance()).isZero();
+        assertThat(receiverAfter.getBalance()).isZero();
     }
 
-    private String login(String username, String password) {
-        return new LoginUserRequester(
-                RequestSpecs.unauthSpec(),
-                ResponseSpecs.requestReturnsOK()
-        ).post(
-                new models.LoginUserRequest(username, password)
-        ).extract().header("Authorization");
+    @Test
+    @DisplayName("Should reject transfer without confirmation")
+    public void shouldRejectTransferWithoutConfirmation() {
+        CreateUserRequest user = AdminSteps.createUser();
+        authAsUser(user);
+        createTwoAccounts();
+
+        List<CreateAccountResponse> accounts = getAccounts(user);
+        CreateAccountResponse sender = accounts.getFirst();
+        CreateAccountResponse receiver = accounts.get(1);
+
+        makeDeposit(TRANSFER_AMOUNT_LARGE);
+
+        new UserDashboard()
+                .openTransfer()
+                .selectFirstAccount()
+                .enterRecipientName(user.getUsername())
+                .enterRecipientAccount(receiver.getAccountNumber())
+                .enterTransferAmount(TRANSFER_AMOUNT_SMALL)
+                .submitTransfer();
+
+        List<CreateAccountResponse> accountsAfter = getAccounts(user);
+        CreateAccountResponse senderAfter = getAccountByNumber(accountsAfter, sender.getAccountNumber());
+        CreateAccountResponse receiverAfter = getAccountByNumber(accountsAfter, receiver.getAccountNumber());
+
+        assertThat(senderAfter.getBalance()).isCloseTo(TRANSFER_AMOUNT_LARGE, within(DELTA));
+        assertThat(receiverAfter.getBalance()).isZero();
     }
 
-    private double generateInitialBalance() {
-        double balance = MIN_INITIAL_BALANCE +
-                RANDOM.nextDouble() * (MAX_INITIAL_BALANCE - MIN_INITIAL_BALANCE);
-        return Math.round(balance * PRECISION_MULTIPLIER) / PRECISION_MULTIPLIER;
+    @Test
+    @DisplayName("Should reject transfer with empty amount")
+    public void shouldRejectTransferWithEmptyAmount() {
+        CreateUserRequest user = AdminSteps.createUser();
+        authAsUser(user);
+        createTwoAccounts();
+
+        List<CreateAccountResponse> accounts = getAccounts(user);
+        CreateAccountResponse sender = accounts.getFirst();
+        CreateAccountResponse receiver = accounts.get(1);
+
+        new UserDashboard()
+                .openTransfer()
+                .selectFirstAccount()
+                .enterRecipientName(user.getUsername())
+                .enterRecipientAccount(receiver.getAccountNumber())
+                .confirm()
+                .submitTransfer();
+
+        List<CreateAccountResponse> accountsAfter = getAccounts(user);
+        CreateAccountResponse senderAfter = getAccountByNumber(accountsAfter, sender.getAccountNumber());
+        CreateAccountResponse receiverAfter = getAccountByNumber(accountsAfter, receiver.getAccountNumber());
+
+        assertThat(senderAfter.getBalance()).isZero();
+        assertThat(receiverAfter.getBalance()).isZero();
     }
 }

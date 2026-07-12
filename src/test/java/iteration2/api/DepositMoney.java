@@ -1,263 +1,126 @@
-package iteration2.api;
+package iteration2.ui;
 
-import models.AccountInfoResponse;
+import iteration1.ui.BaseUiTest;
+import models.CreateAccountResponse;
 import models.CreateUserRequest;
-import models.DepositMoneyRequest;
-import models.LoginUserRequest;
-import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.Arguments;
-import org.junit.jupiter.params.provider.MethodSource;
-import requests.CreateAccountRequester;
-import requests.DepositRequester;
-import requests.LoginUserRequester;
+import org.junit.jupiter.params.provider.ValueSource;
 import requests.steps.AdminSteps;
-import specs.RequestSpecs;
-import specs.ResponseSpecs;
+import requests.steps.UserSteps;
+import requests.ui.pages.UserDashboard;
 
 import java.util.List;
-import java.util.Random;
-import java.util.stream.Stream;
 
 import static constants.TestConstants.*;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.Assertions.assertAll;
+import static org.assertj.core.api.Assertions.within;
 
-@DisplayName("Депозиты на счет")
-public class DepositMoney {
+public class DepositMoney extends BaseUiTest {
 
-    private static final Random RANDOM = new Random();
-
-    private String authToken;
-    private Long accountId;
-
-    @BeforeEach
-    void setup() {
-        // Используем AdminSteps как в iteration1!
-        CreateUserRequest userRequest = AdminSteps.createUser();
-
-        // Логинимся созданным пользователем
-        LoginUserRequest loginRequest = LoginUserRequest.builder()
-                .username(userRequest.getUsername())
-                .password(userRequest.getPassword())
-                .build();
-
-        authToken = new LoginUserRequester(
-                RequestSpecs.unauthSpec(),
-                ResponseSpecs.requestReturnsOK()
-        ).post(loginRequest)
-                .extract()
-                .header("Authorization");
-
-        AccountInfoResponse accountResponse = new CreateAccountRequester(
-                RequestSpecs.authSpec(authToken),
-                ResponseSpecs.entityWasCreated()
-        ).post()
-                .extract()
-                .as(AccountInfoResponse.class);
-
-        accountId = accountResponse.getId();
+    private void createAccount() {
+        new UserDashboard()
+                .open()
+                .createNewAccount();
     }
 
-    @ParameterizedTest(name = "{0}")
-    @MethodSource("multipleDepositsScenarios")
-    @DisplayName("Несколько депозитов подряд")
-    void shouldMaintainCorrectBalanceAfterMultipleDeposits(String scenarioName, List<Double> deposits, double expectedFinalBalance) {
-        double runningBalance = 0.0;
-
-        for (double amount : deposits) {
-            AccountInfoResponse response = executeDeposit(amount);
-            runningBalance = runningBalance + amount;
-
-            assertThat(response.getBalance())
-                    .as("Balance after deposit of %.2f", amount)
-                    .isCloseTo(runningBalance, within(DELTA));
-        }
-
-        assertThat(runningBalance).isCloseTo(expectedFinalBalance, within(DELTA));
+    private void makeDeposit(double amount) {
+        new UserDashboard()
+                .openDeposit()
+                .selectFirstAccount()
+                .enterAmount(amount)
+                .submitDeposit();
     }
-    private static Stream<Arguments> multipleDepositsScenarios() {
-        return Stream.of(
-                Arguments.of("Three deposits", List.of(1000.0, 500.0, 250.75), 1750.75),
-                Arguments.of("Two deposits reaching limit", List.of(MIN_VALID_DEPOSIT, MAX_DEPOSIT_LIMIT - DELTA), MAX_DEPOSIT_LIMIT + 0.009),
-                Arguments.of("Four deposits", List.of(100.0, 200.0, 300.0, 400.0), 1000.0)
-        );
+
+    private double getSingleAccountBalance(CreateUserRequest user) {
+        List<CreateAccountResponse> accounts = new UserSteps(user.getUsername(), user.getPassword())
+                .getAllAccounts();
+        assertThat(accounts).hasSize(1);
+        return accounts.getFirst().getBalance();
     }
 
     @Test
-    @Disabled("Лимит депозита работает с округлением, тест требует доработки под новую версию API")
-    @DisplayName("Отказ при превышении лимита")
-    void shouldRejectDepositWhenTotalExceedsLimit() {
-        executeDeposit(MAX_DEPOSIT_LIMIT - DELTA);
+    @DisplayName("User can deposit money")
+    public void userCanDepositMoney() {
+        CreateUserRequest user = AdminSteps.createUser();
+        authAsUser(user);
+        createAccount();
+        double amount = TRANSFER_AMOUNT_MEDIUM;
 
-        DepositMoneyRequest request = DepositMoneyRequest.builder()
-                .id(accountId)
-                .balance(EXCEED_LIMIT_AMOUNT)
-                .build();
+        makeDeposit(amount);
 
-        String errorResponse = new DepositRequester(
-                RequestSpecs.authSpec(authToken),
-                ResponseSpecs.badRequest()
-        ).post(request)
-                .extract()
-                .asString();
-
-        assertThat(errorResponse).contains(ERROR_MAX_DEPOSIT);
-    }
-
-    @RepeatedTest(RANDOM_TEST_REPETITIONS)
-    @DisplayName("Случайные суммы депозитов")
-    void shouldHandleRandomDepositAmounts() {
-        double amount = generateRandomDepositAmount();
-        double balanceBefore = getCurrentBalance();
-
-        AccountInfoResponse response = executeDeposit(amount);
-
-        assertThat(response.getBalance())
-                .as("Balance after random deposit %.2f", amount)
-                .isCloseTo(balanceBefore + amount, within(DELTA));
+        assertThat(getSingleAccountBalance(user))
+                .isCloseTo(amount, within(DELTA));
     }
 
     @ParameterizedTest
-    @MethodSource("validDepositAmounts")
-    @DisplayName("Валидные суммы депозитов")
-    void shouldAcceptValidDepositAmounts(double amount) {
-        double balanceBefore = getCurrentBalance();
+    @ValueSource(doubles = {0.01, 100.0, 5000.0})
+    @DisplayName("User can deposit valid amounts")
+    public void userCanDepositValidAmounts(double amount) {
+        CreateUserRequest user = AdminSteps.createUser();
+        authAsUser(user);
+        createAccount();
 
-        AccountInfoResponse response = executeDeposit(amount);
+        makeDeposit(amount);
 
-        assertAll(
-                () -> assertThat(response.getBalance())
-                        .isCloseTo(balanceBefore + amount, within(DELTA)),
-                () -> assertThat(response.getBalance())
-                        .isLessThanOrEqualTo(MAX_DEPOSIT_LIMIT + DELTA),
-                () -> assertThat(response.getId()).isEqualTo(accountId)
-        );
-    }
-
-    private static Stream<Double> validDepositAmounts() {
-        return Stream.of(VALID_DEPOSIT_AMOUNTS);
-    }
-
-    @ParameterizedTest
-    @MethodSource("invalidDepositAmountsProvider")
-    @DisplayName("Невалидные суммы депозитов")
-    void shouldRejectInvalidDepositAmounts(InvalidDepositTestData testData) {
-        double balanceBefore = getCurrentBalance();
-
-        DepositMoneyRequest request = DepositMoneyRequest.builder()
-                .id(accountId)
-                .balance(testData.amount)
-                .build();
-
-        String errorResponse = new DepositRequester(
-                RequestSpecs.authSpec(authToken),
-                ResponseSpecs.badRequest()
-        ).post(request)
-                .extract()
-                .asString();
-
-        double balanceAfter = getCurrentBalance();
-
-        assertAll(
-                () -> assertThat(errorResponse).isEqualTo(testData.expectedMessage),
-                () -> assertThat(balanceAfter).isCloseTo(balanceBefore, within(DELTA))
-        );
-    }
-
-    private static Stream<InvalidDepositTestData> invalidDepositAmountsProvider() {
-        return Stream.of(
-                new InvalidDepositTestData(ZERO_AMOUNT, ERROR_MIN_DEPOSIT),
-                new InvalidDepositTestData(SMALL_NEGATIVE_AMOUNT, ERROR_MIN_DEPOSIT),
-                new InvalidDepositTestData(MEDIUM_NEGATIVE_AMOUNT, ERROR_MIN_DEPOSIT),
-                new InvalidDepositTestData(LARGE_NEGATIVE_AMOUNT, ERROR_MIN_DEPOSIT),
-                new InvalidDepositTestData(SLIGHTLY_ABOVE_LIMIT, ERROR_MAX_DEPOSIT),
-                new InvalidDepositTestData(MODERATELY_ABOVE_LIMIT, ERROR_MAX_DEPOSIT),
-                new InvalidDepositTestData(FAR_ABOVE_LIMIT, ERROR_MAX_DEPOSIT),
-                new InvalidDepositTestData(EXTREME_ABOVE_LIMIT, ERROR_MAX_DEPOSIT)
-        );
+        assertThat(getSingleAccountBalance(user))
+                .isCloseTo(amount, within(DELTA));
     }
 
     @Test
-    @DisplayName("Проверка точности до двух знаков")
-    void shouldPreservePrecisionForTwoDecimalPlaces() {
-        AccountInfoResponse response = executeDeposit(PRECISION_TEST_AMOUNT);
+    @DisplayName("User can make multiple deposits")
+    public void userCanMakeMultipleDeposits() {
+        CreateUserRequest user = AdminSteps.createUser();
+        authAsUser(user);
+        createAccount();
+        double firstAmount = TRANSFER_AMOUNT_LARGE;
+        double secondAmount = TRANSFER_AMOUNT_MEDIUM;
+        double expectedBalance = firstAmount + secondAmount;
 
-        assertThat(response.getBalance())
-                .as("Balance should have max %d decimal places", MAX_DECIMAL_PLACES)
-                .satisfies(balance -> {
-                    String balanceStr = String.valueOf(balance);
-                    if (balanceStr.contains(".")) {
-                        int decimalDigits = balanceStr.split("\\.")[1].length();
-                        assertThat(decimalDigits).isLessThanOrEqualTo(MAX_DECIMAL_PLACES);
-                    }
-                });
+        makeDeposit(firstAmount);
+        makeDeposit(secondAmount);
+
+        assertThat(getSingleAccountBalance(user))
+                .isCloseTo(expectedBalance, within(DELTA));
     }
 
     @Test
-    @DisplayName("Депозит на несуществующий счет")
-    void shouldThrowWhenDepositingToNonExistentAccount() {
-        DepositMoneyRequest request = DepositMoneyRequest.builder()
-                .id(NON_EXISTENT_ACCOUNT_ID)
-                .balance(TRANSFER_AMOUNT_SMALL)
-                .build();
+    @DisplayName("Should reject empty deposit amount")
+    public void shouldRejectEmptyDepositAmount() {
+        CreateUserRequest user = AdminSteps.createUser();
+        authAsUser(user);
+        createAccount();
 
-        new DepositRequester(
-                RequestSpecs.authSpec(authToken),
-                ResponseSpecs.forbidden()
-        ).post(request);
+        new UserDashboard()
+                .openDeposit()
+                .selectFirstAccount()
+                .submitDeposit();
+
+        assertThat(getSingleAccountBalance(user)).isZero();
     }
 
     @Test
-    @DisplayName("Депозит без авторизации")
-    void shouldThrowWhenDepositingWithoutAuth() {
-        DepositMoneyRequest request = DepositMoneyRequest.builder()
-                .id(accountId)
-                .balance(TRANSFER_AMOUNT_SMALL)
-                .build();
+    @DisplayName("Should reject negative deposit amount")
+    public void shouldRejectNegativeDepositAmount() {
+        CreateUserRequest user = AdminSteps.createUser();
+        authAsUser(user);
+        createAccount();
 
-        new DepositRequester(
-                RequestSpecs.unauthSpec(),
-                ResponseSpecs.unauthorized()
-        ).post(request);
+        makeDeposit(SMALL_NEGATIVE_AMOUNT);
+
+        assertThat(getSingleAccountBalance(user)).isZero();
     }
 
-    // ================= HELPER METHODS =================
+    @Test
+    @DisplayName("Should reject deposit exceeding limit")
+    public void shouldRejectDepositExceedingLimit() {
+        CreateUserRequest user = AdminSteps.createUser();
+        authAsUser(user);
+        createAccount();
 
-    private AccountInfoResponse executeDeposit(double amount) {
-        DepositMoneyRequest request = DepositMoneyRequest.builder()
-                .id(accountId)
-                .balance(amount)
-                .build();
+        makeDeposit(FAR_ABOVE_LIMIT);
 
-        return new DepositRequester(
-                RequestSpecs.authSpec(authToken),
-                ResponseSpecs.balanceWasUpdated()
-        ).post(request)
-                .extract()
-                .as(AccountInfoResponse.class);
-    }
-
-    private double getCurrentBalance() {
-        return 0.0; // TODO: реализовать получение баланса через API
-    }
-
-    private double generateRandomDepositAmount() {
-        return MIN_VALID_DEPOSIT + (MAX_DEPOSIT_LIMIT - MIN_VALID_DEPOSIT) * RANDOM.nextDouble();
-    }
-
-    private static org.assertj.core.data.Offset<Double> within(double epsilon) {
-        return org.assertj.core.data.Offset.offset(epsilon);
-    }
-
-    // Внутренний класс для тестовых данных
-    private static class InvalidDepositTestData {
-        final double amount;
-        final String expectedMessage;
-
-        InvalidDepositTestData(double amount, String expectedMessage) {
-            this.amount = amount;
-            this.expectedMessage = expectedMessage;
-        }
+        assertThat(getSingleAccountBalance(user)).isZero();
     }
 }
