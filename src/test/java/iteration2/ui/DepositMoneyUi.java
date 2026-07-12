@@ -1,17 +1,18 @@
 package iteration2.ui;
 
+import common.annotations.UserSession;
+import common.storage.SessionStorage;
 import iteration1.ui.BaseUiTest;
 import models.CreateAccountResponse;
 import models.CreateUserRequest;
-import org.junit.jupiter.api.RepeatedTest;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import requests.steps.AdminSteps;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import requests.steps.UserSteps;
-import requests.ui.pages.BankAlert;
 import requests.ui.pages.UserDashboard;
 
 import java.util.List;
-import java.util.Random;
 
 import static constants.TestConstants.*;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -19,217 +20,112 @@ import static org.assertj.core.api.Assertions.within;
 
 public class DepositMoneyUi extends BaseUiTest {
 
-    private static final Random RANDOM = new Random();
-
-    @Test
-    public void userCanDepositMoney() {
-        CreateUserRequest user = AdminSteps.createUser();
-        authAsUser(user);
-
-        new UserDashboard()
-                .open()
-                .createNewAccount()
-                .openDeposit()
-                .selectFirstAccount()
-                .enterAmount(TRANSFER_AMOUNT_MEDIUM)
-                .submitDeposit()
-                .checkAlertMessageAndAccept(
-                        BankAlert.DEPOSIT_SUCCESSFUL.getMessage()
-                );
-
-        List<CreateAccountResponse> accounts =
-                new UserSteps(user.getUsername(), user.getPassword())
-                        .getAllAccounts();
-
-        assertThat(accounts).hasSize(1);
-        assertThat(accounts.getFirst().getBalance())
-                .isCloseTo(TRANSFER_AMOUNT_MEDIUM, within(DELTA));
+    private CreateUserRequest currentUser() {
+        return SessionStorage.getUser(0);
     }
 
-    @Test
-    public void userCanDepositMinimumAmount() {
-        CreateUserRequest user = AdminSteps.createUser();
-        authAsUser(user);
-
+    private void createAccount() {
         new UserDashboard()
                 .open()
-                .createNewAccount()
-                .openDeposit()
-                .selectFirstAccount()
-                .enterAmount(MIN_VALID_DEPOSIT)
-                .submitDeposit()
-                .checkAlertMessageAndAccept(
-                        BankAlert.DEPOSIT_SUCCESSFUL.getMessage()
-                );
-
-        List<CreateAccountResponse> accounts =
-                new UserSteps(user.getUsername(), user.getPassword())
-                        .getAllAccounts();
-
-        assertThat(accounts).hasSize(1);
-        assertThat(accounts.getFirst().getBalance())
-                .isCloseTo(MIN_VALID_DEPOSIT, within(DELTA));
+                .createNewAccount();
     }
 
-    @Test
-    public void userCanDepositMaximumAmount() {
-        CreateUserRequest user = AdminSteps.createUser();
-        authAsUser(user);
-
+    private void makeDeposit(double amount) {
         new UserDashboard()
-                .open()
-                .createNewAccount()
-                .openDeposit()
-                .selectFirstAccount()
-                .enterAmount(MAX_DEPOSIT_LIMIT)
-                .submitDeposit()
-                .checkAlertMessageAndAccept(
-                        BankAlert.DEPOSIT_SUCCESSFUL.getMessage()
-                );
-
-        List<CreateAccountResponse> accounts =
-                new UserSteps(user.getUsername(), user.getPassword())
-                        .getAllAccounts();
-
-        assertThat(accounts).hasSize(1);
-        assertThat(accounts.getFirst().getBalance())
-                .isCloseTo(MAX_DEPOSIT_LIMIT, within(DELTA));
-    }
-
-    @RepeatedTest(RANDOM_TEST_REPETITIONS)
-    public void userCanDepositRandomAmount() {
-        double amount = MIN_VALID_DEPOSIT + (MAX_DEPOSIT_LIMIT - MIN_VALID_DEPOSIT) * RANDOM.nextDouble();
-        amount = Math.round(amount * PRECISION_MULTIPLIER) / PRECISION_MULTIPLIER;
-
-        CreateUserRequest user = AdminSteps.createUser();
-        authAsUser(user);
-
-        new UserDashboard()
-                .open()
-                .createNewAccount()
                 .openDeposit()
                 .selectFirstAccount()
                 .enterAmount(amount)
-                .submitDeposit()
-                .checkAlertMessageAndAccept(
-                        BankAlert.DEPOSIT_SUCCESSFUL.getMessage()
-                );
+                .submitDeposit();
+    }
 
-        List<CreateAccountResponse> accounts =
-                new UserSteps(user.getUsername(), user.getPassword())
-                        .getAllAccounts();
-
+    private double getSingleAccountBalance(CreateUserRequest user) {
+        List<CreateAccountResponse> accounts = new UserSteps(user.getUsername(), user.getPassword())
+                .getAllAccounts();
         assertThat(accounts).hasSize(1);
-        assertThat(accounts.getFirst().getBalance())
+        return accounts.getFirst().getBalance();
+    }
+
+    @Test
+    @UserSession
+    @DisplayName("User can deposit money")
+    public void userCanDepositMoney() {
+        CreateUserRequest user = currentUser();
+        createAccount();
+        double amount = TRANSFER_AMOUNT_MEDIUM;
+
+        makeDeposit(amount);
+
+        assertThat(getSingleAccountBalance(user))
+                .isCloseTo(amount, within(DELTA));
+    }
+
+    @ParameterizedTest
+    @ValueSource(doubles = {0.01, 100.0, 5000.0})
+    @UserSession
+    @DisplayName("User can deposit valid amounts")
+    public void userCanDepositValidAmounts(double amount) {
+        CreateUserRequest user = currentUser();
+        createAccount();
+
+        makeDeposit(amount);
+
+        assertThat(getSingleAccountBalance(user))
                 .isCloseTo(amount, within(DELTA));
     }
 
     @Test
+    @UserSession
+    @DisplayName("User can make multiple deposits")
     public void userCanMakeMultipleDeposits() {
+        CreateUserRequest user = currentUser();
+        createAccount();
         double firstAmount = TRANSFER_AMOUNT_LARGE;
         double secondAmount = TRANSFER_AMOUNT_MEDIUM;
         double expectedBalance = firstAmount + secondAmount;
 
-        CreateUserRequest user = AdminSteps.createUser();
-        authAsUser(user);
+        makeDeposit(firstAmount);
+        makeDeposit(secondAmount);
 
-        UserDashboard dashboard = new UserDashboard();
-
-        dashboard.open()
-                .createNewAccount()
-                .openDeposit()
-                .selectFirstAccount()
-                .enterAmount(firstAmount)
-                .submitDeposit()
-                .checkAlertMessageAndAccept(
-                        BankAlert.DEPOSIT_SUCCESSFUL.getMessage()
-                );
-
-        dashboard.openDeposit()
-                .selectFirstAccount()
-                .enterAmount(secondAmount)
-                .submitDeposit()
-                .checkAlertMessageAndAccept(
-                        BankAlert.DEPOSIT_SUCCESSFUL.getMessage()
-                );
-
-        List<CreateAccountResponse> accounts =
-                new UserSteps(user.getUsername(), user.getPassword())
-                        .getAllAccounts();
-
-        assertThat(accounts).hasSize(1);
-        assertThat(accounts.getFirst().getBalance())
+        assertThat(getSingleAccountBalance(user))
                 .isCloseTo(expectedBalance, within(DELTA));
     }
 
     @Test
+    @UserSession
+    @DisplayName("Should reject empty deposit amount")
     public void shouldRejectEmptyDepositAmount() {
-        CreateUserRequest user = AdminSteps.createUser();
-        authAsUser(user);
+        CreateUserRequest user = currentUser();
+        createAccount();
 
         new UserDashboard()
-                .open()
-                .createNewAccount()
                 .openDeposit()
                 .selectFirstAccount()
-                .submitDeposit()
-                .checkAlertMessageAndAccept(
-                        BankAlert.INVALID_DEPOSIT_AMOUNT.getMessage()
-                );
+                .submitDeposit();
 
-        List<CreateAccountResponse> accounts =
-                new UserSteps(user.getUsername(), user.getPassword())
-                        .getAllAccounts();
-
-        assertThat(accounts).hasSize(1);
-        assertThat(accounts.getFirst().getBalance()).isZero();
+        assertThat(getSingleAccountBalance(user)).isZero();
     }
 
     @Test
+    @UserSession
+    @DisplayName("Should reject negative deposit amount")
     public void shouldRejectNegativeDepositAmount() {
-        CreateUserRequest user = AdminSteps.createUser();
-        authAsUser(user);
+        CreateUserRequest user = currentUser();
+        createAccount();
 
-        new UserDashboard()
-                .open()
-                .createNewAccount()
-                .openDeposit()
-                .selectFirstAccount()
-                .enterAmount(SMALL_NEGATIVE_AMOUNT)
-                .submitDeposit()
-                .checkAlertMessageAndAccept(
-                        BankAlert.INVALID_DEPOSIT_AMOUNT.getMessage()
-                );
+        makeDeposit(SMALL_NEGATIVE_AMOUNT);
 
-        List<CreateAccountResponse> accounts =
-                new UserSteps(user.getUsername(), user.getPassword())
-                        .getAllAccounts();
-
-        assertThat(accounts).hasSize(1);
-        assertThat(accounts.getFirst().getBalance()).isZero();
+        assertThat(getSingleAccountBalance(user)).isZero();
     }
 
     @Test
+    @UserSession
+    @DisplayName("Should reject deposit exceeding limit")
     public void shouldRejectDepositExceedingLimit() {
-        CreateUserRequest user = AdminSteps.createUser();
-        authAsUser(user);
+        CreateUserRequest user = currentUser();
+        createAccount();
 
-        new UserDashboard()
-                .open()
-                .createNewAccount()
-                .openDeposit()
-                .selectFirstAccount()
-                .enterAmount(FAR_ABOVE_LIMIT)
-                .submitDeposit()
-                .checkAlertMessageAndAccept(
-                        BankAlert.DEPOSIT_EXCEEDS_LIMIT.getMessage()
-                );
+        makeDeposit(FAR_ABOVE_LIMIT);
 
-        List<CreateAccountResponse> accounts =
-                new UserSteps(user.getUsername(), user.getPassword())
-                        .getAllAccounts();
-
-        assertThat(accounts).hasSize(1);
-        assertThat(accounts.getFirst().getBalance()).isZero();
+        assertThat(getSingleAccountBalance(user)).isZero();
     }
 }

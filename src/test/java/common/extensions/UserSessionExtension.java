@@ -1,38 +1,41 @@
 package common.extensions;
 
-import models.CreateUserRequest;
-import requests.steps.AdminSteps;
 import common.annotations.UserSession;
 import common.storage.SessionStorage;
+import iteration1.ui.BaseUiTest;
+import models.CreateUserRequest;
 import org.junit.jupiter.api.extension.BeforeEachCallback;
 import org.junit.jupiter.api.extension.ExtensionContext;
-import requests.ui.pages.BasePage;
+import requests.steps.AdminSteps;
 
 import java.util.LinkedList;
 import java.util.List;
 
 public class UserSessionExtension implements BeforeEachCallback {
+
     @Override
     public void beforeEach(ExtensionContext extensionContext) throws Exception {
-        // Шаг 1: проверка, что у теста есть аннотация UserSession
         UserSession annotation = extensionContext.getRequiredTestMethod().getAnnotation(UserSession.class);
-        if (annotation != null) {
-            int userCount = annotation.value();
+        if (annotation == null) {
+            return;
+        }
 
-            SessionStorage.clear();
+        int userCount = annotation.value();
+        SessionStorage.clear();
 
-            List<CreateUserRequest> users = new LinkedList<>();
+        List<CreateUserRequest> users = new LinkedList<>();
+        for (int i = 0; i < userCount; i++) {
+            users.add(AdminSteps.createUser());
+        }
+        SessionStorage.addUsers(users);
 
-            for (int i = 0; i < userCount; i++) {
-                CreateUserRequest user = AdminSteps.createUser();
-                users.add(user);
-            }
+        int authIndex = annotation.auth();
+        CreateUserRequest userToAuth = SessionStorage.getUser(authIndex);
 
-            SessionStorage.addUsers(users);
-
-            int authAsUser = annotation.auth();
-
-            BasePage.authAsUser(SessionStorage.getUser(authAsUser));
+        // Вызываем метод authAsUser у самого теста (он унаследован от BaseUiTest)
+        Object testInstance = extensionContext.getRequiredTestInstance();
+        if (testInstance instanceof BaseUiTest) {
+            ((BaseUiTest) testInstance).authAsUser(userToAuth);
         }
     }
 }
