@@ -60,3 +60,4 @@ public class CreateUserTest extends BaseUiTest {
         assertThat(usersWithSameUsernameAsNewUser).isZero();
     }
 }
+

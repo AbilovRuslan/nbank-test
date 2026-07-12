@@ -26,3 +26,5 @@ public class LoginUserTest extends BaseUiTest {
                 .shouldBe(Condition.visible).shouldHave(Condition.text("Welcome, noname!"));
     }
 }
+
+
