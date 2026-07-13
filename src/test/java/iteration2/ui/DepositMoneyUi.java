@@ -1,7 +1,5 @@
 package iteration2.ui;
 
-import common.annotations.UserSession;
-import common.storage.SessionStorage;
 import iteration1.ui.BaseUiTest;
 import models.CreateAccountResponse;
 import models.CreateUserRequest;
@@ -9,6 +7,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import requests.steps.AdminSteps;
 import requests.steps.UserSteps;
 import requests.ui.pages.UserDashboard;
 
@@ -19,10 +18,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.within;
 
 public class DepositMoneyUi extends BaseUiTest {
-
-    private CreateUserRequest currentUser() {
-        return SessionStorage.getUser(0);
-    }
 
     private void createAccount() {
         new UserDashboard()
@@ -46,12 +41,18 @@ public class DepositMoneyUi extends BaseUiTest {
     }
 
     @Test
-    @UserSession
     @DisplayName("User can deposit money")
     public void userCanDepositMoney() {
-        CreateUserRequest user = currentUser();
+        CreateUserRequest user = AdminSteps.createUser();
+        authAsUser(user);
         createAccount();
         double amount = TRANSFER_AMOUNT_MEDIUM;
+
+
+        List<CreateAccountResponse> accountsBefore = new UserSteps(user.getUsername(), user.getPassword())
+                .getAllAccounts();
+        assertThat(accountsBefore).hasSize(1);
+        assertThat(accountsBefore.getFirst().getBalance()).isZero();
 
         makeDeposit(amount);
 
@@ -61,11 +62,16 @@ public class DepositMoneyUi extends BaseUiTest {
 
     @ParameterizedTest
     @ValueSource(doubles = {0.01, 100.0, 5000.0})
-    @UserSession
     @DisplayName("User can deposit valid amounts")
     public void userCanDepositValidAmounts(double amount) {
-        CreateUserRequest user = currentUser();
+        CreateUserRequest user = AdminSteps.createUser();
+        authAsUser(user);
         createAccount();
+
+
+        List<CreateAccountResponse> accountsBefore = new UserSteps(user.getUsername(), user.getPassword())
+                .getAllAccounts();
+        assertThat(accountsBefore).hasSize(1);
 
         makeDeposit(amount);
 
@@ -74,14 +80,19 @@ public class DepositMoneyUi extends BaseUiTest {
     }
 
     @Test
-    @UserSession
     @DisplayName("User can make multiple deposits")
     public void userCanMakeMultipleDeposits() {
-        CreateUserRequest user = currentUser();
+        CreateUserRequest user = AdminSteps.createUser();
+        authAsUser(user);
         createAccount();
         double firstAmount = TRANSFER_AMOUNT_LARGE;
         double secondAmount = TRANSFER_AMOUNT_MEDIUM;
         double expectedBalance = firstAmount + secondAmount;
+
+
+        List<CreateAccountResponse> accountsBefore = new UserSteps(user.getUsername(), user.getPassword())
+                .getAllAccounts();
+        assertThat(accountsBefore).hasSize(1);
 
         makeDeposit(firstAmount);
         makeDeposit(secondAmount);
@@ -91,11 +102,16 @@ public class DepositMoneyUi extends BaseUiTest {
     }
 
     @Test
-    @UserSession
     @DisplayName("Should reject empty deposit amount")
     public void shouldRejectEmptyDepositAmount() {
-        CreateUserRequest user = currentUser();
+        CreateUserRequest user = AdminSteps.createUser();
+        authAsUser(user);
         createAccount();
+
+
+        List<CreateAccountResponse> accountsBefore = new UserSteps(user.getUsername(), user.getPassword())
+                .getAllAccounts();
+        assertThat(accountsBefore).hasSize(1);
 
         new UserDashboard()
                 .openDeposit()
@@ -106,11 +122,16 @@ public class DepositMoneyUi extends BaseUiTest {
     }
 
     @Test
-    @UserSession
     @DisplayName("Should reject negative deposit amount")
     public void shouldRejectNegativeDepositAmount() {
-        CreateUserRequest user = currentUser();
+        CreateUserRequest user = AdminSteps.createUser();
+        authAsUser(user);
         createAccount();
+
+
+        List<CreateAccountResponse> accountsBefore = new UserSteps(user.getUsername(), user.getPassword())
+                .getAllAccounts();
+        assertThat(accountsBefore).hasSize(1);
 
         makeDeposit(SMALL_NEGATIVE_AMOUNT);
 
@@ -118,11 +139,16 @@ public class DepositMoneyUi extends BaseUiTest {
     }
 
     @Test
-    @UserSession
     @DisplayName("Should reject deposit exceeding limit")
     public void shouldRejectDepositExceedingLimit() {
-        CreateUserRequest user = currentUser();
+        CreateUserRequest user = AdminSteps.createUser();
+        authAsUser(user);
         createAccount();
+
+
+        List<CreateAccountResponse> accountsBefore = new UserSteps(user.getUsername(), user.getPassword())
+                .getAllAccounts();
+        assertThat(accountsBefore).hasSize(1);
 
         makeDeposit(FAR_ABOVE_LIMIT);
 
