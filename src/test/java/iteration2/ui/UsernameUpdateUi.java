@@ -19,52 +19,72 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 public class UsernameUpdateUi extends BaseUiTest {
 
-    private String getActualName(CreateUserRequest user) {
-        return new UserSteps(user.getUsername(), user.getPassword())
-                .getProfile()
-                .getName();
+    private CreateUserRequest user;
+    private UserSteps userSteps;
+
+    private void setupUser() {
+        user = AdminSteps.createUser();
+        authAsUser(user);
+        userSteps = new UserSteps(user.getUsername(), user.getPassword());
+    }
+
+    private UserDashboard openEditProfile() {
+        return new UserDashboard()
+                .open()
+                .openEditProfile();
+    }
+
+    private void updateName(String newName, BankAlert expectedAlert) {
+        openEditProfile()
+                .enterNewName(newName)
+                .saveChanges()
+                .checkAlertMessageAndAccept(expectedAlert.getMessage());
+    }
+
+    private String getActualName() {
+        return userSteps.getProfile().getName();
     }
 
     @Test
     @DisplayName("User can update name")
     public void userCanUpdateName() {
-        CreateUserRequest user = AdminSteps.createUser();
-        authAsUser(user);
-
-        new UserDashboard()
-                .open()
-                .openEditProfile()
-                .enterNewName(VALID_NAME_TWO_WORDS)
-                .saveChanges()
-                .checkAlertMessageAndAccept(BankAlert.NAME_UPDATED.getMessage());
-
-        assertThat(getActualName(user)).isEqualTo(VALID_NAME_TWO_WORDS);
+        setupUser();
+        updateName(VALID_NAME_TWO_WORDS, BankAlert.NAME_UPDATED);
+        assertThat(getActualName()).isEqualTo(VALID_NAME_TWO_WORDS);
     }
 
     @ParameterizedTest
-    @MethodSource("invalidNames")
-    @DisplayName("Should reject invalid names")
-    public void shouldRejectInvalidNames(String name, BankAlert expectedAlert) {
-        CreateUserRequest user = AdminSteps.createUser();
-        authAsUser(user);
-
-        new UserDashboard()
-                .open()
-                .openEditProfile()
-                .enterNewName(name)
-                .saveChanges()
-                .checkAlertMessageAndAccept(expectedAlert.getMessage());
-
-        assertThat(getActualName(user)).isNull();
+    @MethodSource("invalidRequiredNames")
+    @DisplayName("Should reject empty or whitespace names")
+    public void shouldRejectEmptyOrWhitespaceNames(String name, BankAlert expectedAlert) {
+        setupUser();
+        String nameBefore = getActualName();
+        updateName(name, expectedAlert);
+        assertThat(getActualName()).isEqualTo(nameBefore);
     }
 
-    static Stream<Arguments> invalidNames() {
+    @ParameterizedTest
+    @MethodSource("invalidFormatNames")
+    @DisplayName("Should reject names with invalid format")
+    public void shouldRejectInvalidFormatNames(String name, BankAlert expectedAlert) {
+        setupUser();
+        String nameBefore = getActualName();
+        updateName(name, expectedAlert);
+        assertThat(getActualName()).isEqualTo(nameBefore);
+    }
+
+    static Stream<Arguments> invalidRequiredNames() {
         return Stream.of(
                 Arguments.of(INVALID_NAME_EMPTY, BankAlert.VALID_NAME_REQUIRED),
+                Arguments.of(INVALID_NAME_SPACES, BankAlert.VALID_NAME_REQUIRED)
+        );
+    }
+
+    static Stream<Arguments> invalidFormatNames() {
+        return Stream.of(
                 Arguments.of(INVALID_NAME_ONE_WORD, BankAlert.INVALID_NAME),
                 Arguments.of(INVALID_NAME_SPECIAL_CHARS, BankAlert.INVALID_NAME),
-                Arguments.of(INVALID_NAME_NUMBERS, BankAlert.INVALID_NAME),
-                Arguments.of(INVALID_NAME_SPACES, BankAlert.VALID_NAME_REQUIRED)
+                Arguments.of(INVALID_NAME_NUMBERS, BankAlert.INVALID_NAME)
         );
     }
 }

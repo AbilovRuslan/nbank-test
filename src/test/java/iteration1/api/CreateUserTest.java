@@ -14,6 +14,7 @@ import requests.skelethon.requesters.ValidatedCrudRequester;
 import specs.RequestSpecs;
 import specs.ResponseSpecs;
 
+
 import java.util.stream.Stream;
 
 public class CreateUserTest extends BaseTest {
@@ -28,18 +29,16 @@ public class CreateUserTest extends BaseTest {
                         ResponseSpecs.entityWasCreated())
                 .post(createUserRequest);
 
-        ModelAssertions.assertThatModels(createUserRequest,createUserResponse).match();
+        ModelAssertions.assertThatModels(createUserRequest, createUserResponse).match();
     }
 
     public static Stream<Arguments> userInvalidData() {
         return Stream.of(
-                // username field validation
                 Arguments.of("   ", "Password33$", "USER", "username", "Username cannot be blank"),
                 Arguments.of("ab", "Password33$", "USER", "username", "Username must be between 3 and 15 characters"),
                 Arguments.of("abc$", "Password33$", "USER", "username", "Username must contain only letters, digits, dashes, underscores, and dots"),
                 Arguments.of("abc%", "Password33$", "USER", "username", "Username must contain only letters, digits, dashes, underscores, and dots")
         );
-
     }
 
     @MethodSource("userInvalidData")

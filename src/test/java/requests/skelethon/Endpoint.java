@@ -35,13 +35,19 @@ public enum Endpoint {
             "/api/v1/accounts/{id}",
             null,
             AccountInfoResponse.class
-    ),   // ← запятая
+    ),
 
     DEPOSIT(
             "/api/v1/accounts/deposit",
             DepositMoneyRequest.class,
             AccountInfoResponse.class
-    );   // ← точка с запятой только после последнего
+    ),
+
+    CUSTOMER_PROFILE(
+            "/api/v1/customer/profile",
+            BaseModel.class,
+            UserProfileResponse.class
+    );
 
     private final String url;
     private final Class<?> requestModel;
