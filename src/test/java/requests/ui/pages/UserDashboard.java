@@ -31,10 +31,6 @@ public class UserDashboard extends requests.ui.pages.BasePage<UserDashboard> {
 
     public UserDashboard createNewAccount() {
         createNewAccount.click();
-        try {
-            Alert alert = switchTo().alert();
-            alert.accept();
-        } catch (Exception ignored) {}
         return this;
     }
 

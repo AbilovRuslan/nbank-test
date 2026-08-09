@@ -1,34 +1,32 @@
 package iteration1.ui;
 
-import models.CreateUserRequest;
-import com.codeborne.selenide.Condition;
 import generators.RandomModelGenerator;
+import models.CreateUserRequest;
 import models.CreateUserResponse;
 import models.comparison.ModelAssertions;
-import org.junit.jupiter.api.Test;
 import requests.steps.AdminSteps;
-import  requests.ui.pages.AdminPanel;
+import common.annotations.AdminSession;
+import org.junit.jupiter.api.Test;
+import requests.ui.pages.UserBage;
+import requests.ui.pages.AdminPanel;
 import requests.ui.pages.BankAlert;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class CreateUserTest extends BaseUiTest {
 
     @Test
+    @AdminSession
     public void adminCanCreateUserTest() {
-        // ШАГ 1: админ залогинился в банке
-        CreateUserRequest admin = CreateUserRequest.getAdmin();
-
-        authAsUser(admin);
-
-        // ШАГ 2: админ создает юзера в банке
         CreateUserRequest newUser = RandomModelGenerator.generate(CreateUserRequest.class);
 
-        new AdminPanel().open().createUser(newUser.getUsername(), newUser.getPassword())
+        UserBage newUserBage = new AdminPanel().open().createUser(newUser.getUsername(), newUser.getPassword())
                 .checkAlertMessageAndAccept(BankAlert.USER_CREATED_SUCCESSFULLY.getMessage())
-                .getAllUsers().findBy(Condition.exactText(newUser.getUsername() + "\nUSER")).shouldBe(Condition.visible);
+                .findUserByUsername(newUser.getUsername());
 
-        // ШАГ 5: проверка, что юзер создан на API
+        assertThat(newUserBage)
+                .as("UserBage should exist on Dashboard after user creation").isNotNull();
 
         CreateUserResponse createdUser = AdminSteps.getAllUsers().stream()
                 .filter(user -> user.getUsername().equals(newUser.getUsername()))
@@ -38,21 +36,14 @@ public class CreateUserTest extends BaseUiTest {
     }
 
     @Test
+    @AdminSession
     public void adminCannotCreateUserWithInvalidDataTest() {
-        // ШАГ 1: админ залогинился в банке
-        CreateUserRequest admin = CreateUserRequest.getAdmin();
-
-        authAsUser(admin);
-
-        // ШАГ 2: админ создает юзера в банке
         CreateUserRequest newUser = RandomModelGenerator.generate(CreateUserRequest.class);
         newUser.setUsername("a");
 
-        new AdminPanel().open().createUser(newUser.getUsername(), newUser.getPassword())
+        assertTrue(new AdminPanel().open().createUser(newUser.getUsername(), newUser.getPassword())
                 .checkAlertMessageAndAccept(BankAlert.USERNAME_MUST_BE_BETWEEN_3_AND_15_CHARACTERS.getMessage())
-                .getAllUsers().findBy(Condition.exactText(newUser.getUsername() + "\nUSER")).shouldNotBe(Condition.exist);
-
-        // ШАГ 5: проверка, что юзер НЕ создан на API
+                .getAllUsers().stream().noneMatch(userBage -> userBage.getUsername().equals(newUser.getUsername())));
 
         long usersWithSameUsernameAsNewUser = AdminSteps.getAllUsers().stream()
                 .filter(user -> user.getUsername().equals(newUser.getUsername())).count();
@@ -60,4 +51,3 @@ public class CreateUserTest extends BaseUiTest {
         assertThat(usersWithSameUsernameAsNewUser).isZero();
     }
 }
-
