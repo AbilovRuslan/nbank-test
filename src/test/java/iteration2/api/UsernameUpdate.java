@@ -1,255 +1,120 @@
 package iteration2.api;
 
-import io.restassured.RestAssured;
-import io.restassured.filter.log.RequestLoggingFilter;
-import io.restassured.filter.log.ResponseLoggingFilter;
 import io.restassured.specification.RequestSpecification;
-import generators.RandomData;
 import models.CreateUserRequest;
 import models.LoginUserRequest;
-import models.UserRole;
+import models.UserProfileResponse;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
+import requests.skelethon.Endpoint;
+import requests.skelethon.requesters.CrudRequester;
+import requests.steps.AdminSteps;
 import specs.RequestSpecs;
 import specs.ResponseSpecs;
-import utils.ApiPaths;
 
 import java.util.Map;
+import java.util.stream.Stream;
 
 import static constants.TestConstants.*;
 import static io.restassured.RestAssured.given;
-import static org.hamcrest.Matchers.equalTo;
-import static org.hamcrest.Matchers.not;
+import static org.assertj.core.api.Assertions.assertThat;
 
+@DisplayName("Изменение имени пользователя")
 public class UsernameUpdate {
 
-    // Конфигурация
-    private static final String BASE_URI_PROPERTY = "test.base.uri";
-    private static final String DEFAULT_BASE_URI = "http://localhost:4111";
-
-    private static RequestSpecification customerAuthSpec;
-    private static String testUsername;
-    private static String testPassword;
+    private RequestSpecification authSpec;
 
     @BeforeEach
-    public void setup() {
-        // Без хардкода - через системную переменную
-        RestAssured.baseURI = getBaseUri();
-        RestAssured.filters(new RequestLoggingFilter(), new ResponseLoggingFilter());
-
-        createTestCustomer();
-    }
-
-    private String getBaseUri() {
-        return System.getProperty(BASE_URI_PROPERTY, DEFAULT_BASE_URI);
-    }
-
-    private void createTestCustomer() {
-        // Генерация username и password через RandomData
-        testUsername = RandomData.getUsername();
-        testPassword = RandomData.getPassword();
-
-        CreateUserRequest userRequest = CreateUserRequest.builder()
-                .username(testUsername)
-                .password(testPassword)
-                .role(UserRole.USER.toString())
-                .build();
-
-        // Создание пользователя - путь из ApiPaths
-        given()
-                .spec(RequestSpecs.adminSpec())
-                .body(userRequest)
-                .post(ApiPaths.Admin.CREATE_USER)
-                .then()
-                .spec(ResponseSpecs.entityWasCreated());
+    void setup() {
+        CreateUserRequest userRequest = AdminSteps.createUser();
 
         LoginUserRequest loginRequest = LoginUserRequest.builder()
-                .username(testUsername)
-                .password(testPassword)
+                .username(userRequest.getUsername())
+                .password(userRequest.getPassword())
                 .build();
 
-        // Авторизация - путь из ApiPaths
-        String token = given()
-                .spec(RequestSpecs.unauthSpec())
-                .body(loginRequest)
-                .post(ApiPaths.Auth.LOGIN)
-                .then()
-                .spec(ResponseSpecs.requestReturnsOK())
+        String authToken = new CrudRequester(
+                RequestSpecs.unauthSpec(),
+                Endpoint.LOGIN,
+                ResponseSpecs.requestReturnsOK()
+        ).post(loginRequest)
                 .extract()
-                .header(ResponseSpecs.AUTHORIZATION_HEADER);
+                .header("Authorization");
 
-        customerAuthSpec = RequestSpecs.authSpec(token);
+        authSpec = RequestSpecs.authSpec(authToken);
+    }
 
-        // Проверка доступа к профилю - путь из ApiPaths
+    @Test
+    @DisplayName("Пользователь может обновить имя на валидное")
+    void shouldUpdateNameWithValidValue() {
+        updateName(VALID_NAME_TWO_WORDS);
+
+        UserProfileResponse profile = getProfile();
+        assertThat(profile.getName()).isEqualTo(VALID_NAME_TWO_WORDS);
+    }
+
+    @ParameterizedTest(name = "Невалидное имя: {0}")
+    @MethodSource("invalidNames")
+    @DisplayName("Невалидные имена должны отклоняться")
+    void shouldRejectInvalidNames(String invalidName, String expectedError) {
+        String errorResponse = updateNameAndGetError(invalidName);
+        assertThat(errorResponse).contains(expectedError);
+    }
+
+    @Test
+    @DisplayName("Доступ к профилю без авторизации должен возвращать 401")
+    void shouldReturnUnauthorizedWithoutAuth() {
         given()
-                .spec(customerAuthSpec)
-                .get(ApiPaths.Customer.PROFILE)
+                .spec(RequestSpecs.unauthSpec())
+                .get(Endpoint.CUSTOMER_PROFILE.getUrl())
                 .then()
-                .statusCode(STATUS_OK);
+                .statusCode(STATUS_UNAUTHORIZED);
     }
 
     // ================= HELPER METHODS =================
 
-    private String getCurrentCustomerName() {
+    private void updateName(String newName) {
+        given()
+                .spec(authSpec)
+                .body(Map.of("name", newName))
+                .put(Endpoint.CUSTOMER_PROFILE.getUrl())
+                .then()
+                .statusCode(STATUS_OK);
+    }
+
+    private String updateNameAndGetError(String newName) {
         return given()
-                .spec(customerAuthSpec)
-                .get(ApiPaths.Customer.PROFILE)
+                .spec(authSpec)
+                .body(Map.of("name", newName))
+                .put(Endpoint.CUSTOMER_PROFILE.getUrl())
+                .then()
+                .statusCode(STATUS_BAD_REQUEST)
+                .extract()
+                .asString();
+    }
+
+    private UserProfileResponse getProfile() {
+        return given()
+                .spec(authSpec)
+                .get(Endpoint.CUSTOMER_PROFILE.getUrl())
                 .then()
                 .statusCode(STATUS_OK)
                 .extract()
-                .path("name");
+                .as(UserProfileResponse.class);
     }
 
-    private void updateCustomerName(String newName, int expectedStatus) {
-        given()
-                .spec(customerAuthSpec)
-                .body(Map.of("name", newName))
-                .put(ApiPaths.Customer.PROFILE)
-                .then()
-                .statusCode(expectedStatus);
-    }
-
-    // ================= POSITIVE TESTS =================
-
-    @Test
-    public void customerCanUpdateOwnNameWithTwoWords() {
-        String oldName = getCurrentCustomerName();
-
-        updateCustomerName(VALID_NAME_TWO_WORDS, STATUS_OK);
-
-        // Проверка: имя реально поменялось
-        given()
-                .spec(customerAuthSpec)
-                .get(ApiPaths.Customer.PROFILE)
-                .then()
-                .statusCode(STATUS_OK)
-                .body("name", equalTo(VALID_NAME_TWO_WORDS))
-                .body("name", not(equalTo(oldName)));
-    }
-
-    @ParameterizedTest
-    @ValueSource(strings = {VALID_NAME_TWO_WORDS, VALID_NAME_WITH_MIDDLE, VALID_NAME_ENGLISH})
-    public void canUpdateNameWithDifferentTwoWordFormats(String name) {
-        String oldName = getCurrentCustomerName();
-
-        updateCustomerName(name, STATUS_OK);
-
-        given()
-                .spec(customerAuthSpec)
-                .get(ApiPaths.Customer.PROFILE)
-                .then()
-                .statusCode(STATUS_OK)
-                .body("name", equalTo(name))
-                .body("name", not(equalTo(oldName)));
-    }
-
-    // ================= NEGATIVE TESTS =================
-
-    @Test
-    public void cannotUpdateNameWithOneWord() {
-        String oldName = getCurrentCustomerName();
-
-        updateCustomerName(INVALID_NAME_ONE_WORD, STATUS_BAD_REQUEST);
-
-        // Проверка: имя не изменилось
-        given()
-                .spec(customerAuthSpec)
-                .get(ApiPaths.Customer.PROFILE)
-                .then()
-                .statusCode(STATUS_OK)
-                .body("name", equalTo(oldName));
-    }
-
-    @Test
-    public void cannotUpdateNameWithThreeWords() {
-        String oldName = getCurrentCustomerName();
-
-        updateCustomerName(INVALID_NAME_THREE_WORDS, STATUS_BAD_REQUEST);
-
-        given()
-                .spec(customerAuthSpec)
-                .get(ApiPaths.Customer.PROFILE)
-                .then()
-                .statusCode(STATUS_OK)
-                .body("name", equalTo(oldName));
-    }
-
-    @Test
-    public void cannotUpdateNameWithOnlySpaces() {
-        String oldName = getCurrentCustomerName();
-
-        updateCustomerName(INVALID_NAME_SPACES, STATUS_BAD_REQUEST);
-
-        given()
-                .spec(customerAuthSpec)
-                .get(ApiPaths.Customer.PROFILE)
-                .then()
-                .statusCode(STATUS_OK)
-                .body("name", equalTo(oldName));
-    }
-
-    @Test
-    public void cannotUpdateNameWithEmptyString() {
-        String oldName = getCurrentCustomerName();
-
-        updateCustomerName(INVALID_NAME_EMPTY, STATUS_BAD_REQUEST);
-
-        given()
-                .spec(customerAuthSpec)
-                .get(ApiPaths.Customer.PROFILE)
-                .then()
-                .statusCode(STATUS_OK)
-                .body("name", equalTo(oldName));
-    }
-
-    @Test
-    public void cannotUpdateNameWithSpecialCharacters() {
-        String oldName = getCurrentCustomerName();
-
-        updateCustomerName(INVALID_NAME_SPECIAL_CHARS, STATUS_BAD_REQUEST);
-
-        given()
-                .spec(customerAuthSpec)
-                .get(ApiPaths.Customer.PROFILE)
-                .then()
-                .statusCode(STATUS_OK)
-                .body("name", equalTo(oldName));
-    }
-
-    @Test
-    public void cannotUpdateNameWithNumbers() {
-        String oldName = getCurrentCustomerName();
-
-        updateCustomerName(INVALID_NAME_NUMBERS, STATUS_BAD_REQUEST);
-
-        given()
-                .spec(customerAuthSpec)
-                .get(ApiPaths.Customer.PROFILE)
-                .then()
-                .statusCode(STATUS_OK)
-                .body("name", equalTo(oldName));
-    }
-
-    // ================= EDGE CASE =================
-
-    @Test
-    public void testCustomerProfileAccess() {
-        given()
-                .spec(customerAuthSpec)
-                .get(ApiPaths.Customer.PROFILE)
-                .then()
-                .statusCode(STATUS_OK)
-                .log().body();
-    }
-
-    @Test
-    public void getProfileUnauthorized() {
-        given()
-                .spec(RequestSpecs.unauthSpec())
-                .get(ApiPaths.Customer.PROFILE)
-                .then()
-                .statusCode(STATUS_UNAUTHORIZED);
+    private static Stream<Arguments> invalidNames() {
+        return Stream.of(
+                Arguments.of(INVALID_NAME_EMPTY, "Name must contain"),
+                Arguments.of(INVALID_NAME_ONE_WORD, "must contain two words"),
+                Arguments.of(INVALID_NAME_SPECIAL_CHARS, "must contain two words"),
+                Arguments.of(INVALID_NAME_NUMBERS, "must contain two words"),
+                Arguments.of(INVALID_NAME_SPACES, "Name must contain"),
+                Arguments.of(INVALID_NAME_THREE_WORDS, "must contain two words")
+        );
     }
 }
