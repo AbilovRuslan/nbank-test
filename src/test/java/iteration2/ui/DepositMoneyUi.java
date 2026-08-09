@@ -9,6 +9,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import requests.steps.AdminSteps;
 import requests.steps.UserSteps;
+import requests.ui.pages.BankAlert;
 import requests.ui.pages.UserDashboard;
 
 import java.util.List;
@@ -19,98 +20,137 @@ import static org.assertj.core.api.Assertions.within;
 
 public class DepositMoneyUi extends BaseUiTest {
 
-    private CreateUserRequest user;
-
-    private UserDashboard prepareAccountForDeposit() {
-        user = AdminSteps.createUser();
+    private CreateUserRequest createUser() {
+        CreateUserRequest user = AdminSteps.createUser();
         authAsUser(user);
-        return new UserDashboard()
-                .open()
-                .createNewAccount()
-                .openDeposit()
-                .selectFirstAccount();
+        return user;
     }
 
-    private UserDashboard openDepositForExistingAccount() {
-        return new UserDashboard()
-                .openDeposit()
-                .selectFirstAccount();
-    }
-
-    private void assertSingleAccountBalance(double expectedBalance) {
-        List<CreateAccountResponse> accounts = new UserSteps(user.getUsername(), user.getPassword())
-                .getAllAccounts();
-        assertThat(accounts).hasSize(1);
-        assertThat(accounts.getFirst().getBalance()).isCloseTo(expectedBalance, within(DELTA));
+    private List<CreateAccountResponse> getAccounts(CreateUserRequest user) {
+        return new UserSteps(user.getUsername(), user.getPassword()).getAllAccounts();
     }
 
     @Test
     @DisplayName("User can deposit money")
     public void userCanDepositMoney() {
+        CreateUserRequest user = createUser();
         double amount = TRANSFER_AMOUNT_MEDIUM;
 
-        prepareAccountForDeposit()
+        new UserDashboard()
+                .open()
+                .createNewAccount()
+                .openDeposit()
+                .selectFirstAccount()
                 .enterAmount(amount)
-                .submitDeposit();
+                .submitDeposit()
+                .checkAlertMessageAndAccept(BankAlert.DEPOSIT_SUCCESSFUL.getMessage());
 
-        assertSingleAccountBalance(amount);
+        List<CreateAccountResponse> accounts = getAccounts(user);
+        assertThat(accounts).hasSize(1);
+        assertThat(accounts.getFirst().getBalance()).isCloseTo(amount, within(DELTA));
     }
 
     @ParameterizedTest
     @ValueSource(doubles = {0.01, 100.0, 5000.0})
     @DisplayName("User can deposit valid amounts")
     public void userCanDepositValidAmounts(double amount) {
-        prepareAccountForDeposit()
-                .enterAmount(amount)
-                .submitDeposit();
+        CreateUserRequest user = createUser();
 
-        assertSingleAccountBalance(amount);
+        new UserDashboard()
+                .open()
+                .createNewAccount()
+                .openDeposit()
+                .selectFirstAccount()
+                .enterAmount(amount)
+                .submitDeposit()
+                .checkAlertMessageAndAccept(BankAlert.DEPOSIT_SUCCESSFUL.getMessage());
+
+        List<CreateAccountResponse> accounts = getAccounts(user);
+        assertThat(accounts).hasSize(1);
+        assertThat(accounts.getFirst().getBalance()).isCloseTo(amount, within(DELTA));
     }
 
     @Test
     @DisplayName("User can make multiple deposits")
     public void userCanMakeMultipleDeposits() {
+        CreateUserRequest user = createUser();
         double firstAmount = TRANSFER_AMOUNT_LARGE;
         double secondAmount = TRANSFER_AMOUNT_MEDIUM;
         double expectedBalance = firstAmount + secondAmount;
 
-        prepareAccountForDeposit()
+        UserDashboard dashboard = new UserDashboard();
+        dashboard.open().createNewAccount();
+
+        dashboard.openDeposit()
+                .selectFirstAccount()
                 .enterAmount(firstAmount)
-                .submitDeposit();
+                .submitDeposit()
+                .checkAlertMessageAndAccept(BankAlert.DEPOSIT_SUCCESSFUL.getMessage());
 
-        openDepositForExistingAccount()
+        dashboard.openDeposit()
+                .selectFirstAccount()
                 .enterAmount(secondAmount)
-                .submitDeposit();
+                .submitDeposit()
+                .checkAlertMessageAndAccept(BankAlert.DEPOSIT_SUCCESSFUL.getMessage());
 
-        assertSingleAccountBalance(expectedBalance);
+        List<CreateAccountResponse> accounts = getAccounts(user);
+        assertThat(accounts).hasSize(1);
+        assertThat(accounts.getFirst().getBalance()).isCloseTo(expectedBalance, within(DELTA));
     }
 
     @Test
     @DisplayName("Should reject empty deposit amount")
     public void shouldRejectEmptyDepositAmount() {
-        prepareAccountForDeposit()
-                .submitDeposit();
+        CreateUserRequest user = createUser();
 
-        assertSingleAccountBalance(0.0);
+        new UserDashboard()
+                .open()
+                .createNewAccount()
+                .openDeposit()
+                .selectFirstAccount()
+                .submitDeposit()
+                .checkAlertMessageAndAccept(BankAlert.INVALID_DEPOSIT_AMOUNT.getMessage());
+
+        List<CreateAccountResponse> accounts = getAccounts(user);
+        assertThat(accounts).hasSize(1);
+        assertThat(accounts.getFirst().getBalance()).isZero();
     }
 
     @Test
     @DisplayName("Should reject negative deposit amount")
     public void shouldRejectNegativeDepositAmount() {
-        prepareAccountForDeposit()
-                .enterAmount(SMALL_NEGATIVE_AMOUNT)
-                .submitDeposit();
+        CreateUserRequest user = createUser();
 
-        assertSingleAccountBalance(0.0);
+        new UserDashboard()
+                .open()
+                .createNewAccount()
+                .openDeposit()
+                .selectFirstAccount()
+                .enterAmount(SMALL_NEGATIVE_AMOUNT)
+                .submitDeposit()
+                .checkAlertMessageAndAccept(BankAlert.INVALID_DEPOSIT_AMOUNT.getMessage());
+
+        List<CreateAccountResponse> accounts = getAccounts(user);
+        assertThat(accounts).hasSize(1);
+        assertThat(accounts.getFirst().getBalance()).isZero();
     }
 
     @Test
     @DisplayName("Should reject deposit exceeding limit")
     public void shouldRejectDepositExceedingLimit() {
-        prepareAccountForDeposit()
-                .enterAmount(FAR_ABOVE_LIMIT)
-                .submitDeposit();
+        CreateUserRequest user = createUser();
 
-        assertSingleAccountBalance(0.0);
+        new UserDashboard()
+                .open()
+                .createNewAccount()
+                .openDeposit()
+                .selectFirstAccount()
+                .enterAmount(FAR_ABOVE_LIMIT)
+                .submitDeposit()
+                .checkAlertMessageAndAccept(BankAlert.DEPOSIT_EXCEEDS_LIMIT.getMessage());
+
+        List<CreateAccountResponse> accounts = getAccounts(user);
+        assertThat(accounts).hasSize(1);
+        assertThat(accounts.getFirst().getBalance()).isZero();
     }
 }

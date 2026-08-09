@@ -28,10 +28,15 @@ public class ResponseSpecs {
                 .build();
     }
 
-    public static ResponseSpecification requestReturnsBadRequest(String errorKey, List<String> errorValues) {
+    public static ResponseSpecification requestReturnsBadRequest(
+            String errorKey,
+            List<String> errorValues) {
+
         return defaultResponseBuilder()
                 .expectStatusCode(HttpStatus.SC_BAD_REQUEST)
-                .expectBody(errorKey, Matchers.equalTo(errorValues))  // <-- теперь принимает список
+                .expectBody(errorKey, Matchers.containsInAnyOrder(
+                        errorValues.toArray(new String[0])
+                ))
                 .build();
     }
 

@@ -18,44 +18,13 @@ import static org.assertj.core.api.Assertions.within;
 
 public class TransferTestUi extends BaseUiTest {
 
-    private CreateUserRequest user;
-    private CreateAccountResponse senderAccount;
-    private CreateAccountResponse receiverAccount;
-
-    private void setupUserAndAccounts() {
-        user = AdminSteps.createUser();
+    private CreateUserRequest createUser() {
+        CreateUserRequest user = AdminSteps.createUser();
         authAsUser(user);
-        createTwoAccounts();
-        List<CreateAccountResponse> accounts = getAccounts();
-        senderAccount = accounts.getFirst();
-        receiverAccount = accounts.get(1);
+        return user;
     }
 
-    private void createTwoAccounts() {
-        new UserDashboard()
-                .open()
-                .createNewAccount()
-                .createNewAccount();
-    }
-
-    private void makeDeposit(double amount) {
-        new UserDashboard()
-                .openDeposit()
-                .selectFirstAccount()
-                .enterAmount(amount)
-                .submitDeposit()
-                .checkAlertMessageAndAccept(BankAlert.DEPOSIT_SUCCESSFUL.getMessage());
-    }
-
-    private UserDashboard fillTransferForm() {
-        return new UserDashboard()
-                .openTransfer()
-                .selectFirstAccount()
-                .enterRecipientName(user.getUsername())
-                .enterRecipientAccount(receiverAccount.getAccountNumber());
-    }
-
-    private List<CreateAccountResponse> getAccounts() {
+    private List<CreateAccountResponse> getAccounts(CreateUserRequest user) {
         return new UserSteps(user.getUsername(), user.getPassword()).getAllAccounts();
     }
 
@@ -66,65 +35,124 @@ public class TransferTestUi extends BaseUiTest {
                 .orElseThrow();
     }
 
-    private void assertBalances(double senderBalance, double receiverBalance) {
-        List<CreateAccountResponse> accountsAfter = getAccounts();
-        CreateAccountResponse senderAfter = getAccountByNumber(accountsAfter, senderAccount.getAccountNumber());
-        CreateAccountResponse receiverAfter = getAccountByNumber(accountsAfter, receiverAccount.getAccountNumber());
+    private void createTwoAccounts() {
+        new UserDashboard()
+                .open()
+                .createNewAccount()
+                .createNewAccount();
+    }
 
-        assertThat(senderAfter.getBalance()).isCloseTo(senderBalance, within(DELTA));
-        assertThat(receiverAfter.getBalance()).isCloseTo(receiverBalance, within(DELTA));
+    private void makeDeposit() {
+        new UserDashboard()
+                .openDeposit()
+                .selectFirstAccount()
+                .enterAmount(TRANSFER_AMOUNT_LARGE)
+                .submitDeposit()
+                .checkAlertMessageAndAccept(BankAlert.DEPOSIT_SUCCESSFUL.getMessage());
     }
 
     @Test
     @DisplayName("User can transfer money")
     public void userCanTransferMoney() {
-        setupUserAndAccounts();
-        makeDeposit(TRANSFER_AMOUNT_LARGE);
+        CreateUserRequest user = createUser();
+        createTwoAccounts();
 
-        fillTransferForm()
+        List<CreateAccountResponse> accounts = getAccounts(user);
+        CreateAccountResponse sender = accounts.getFirst();
+        CreateAccountResponse receiver = accounts.get(1);
+
+        makeDeposit();
+
+        new UserDashboard()
+                .openTransfer()
+                .selectFirstAccount()
+                .enterRecipientName(user.getUsername())
+                .enterRecipientAccount(receiver.getAccountNumber())
                 .enterTransferAmount(TRANSFER_AMOUNT_SMALL)
                 .confirm()
                 .submitTransfer()
                 .checkAlertMessageAndAccept(BankAlert.TRANSFER_SUCCESSFUL.getMessage());
 
-        assertBalances(TRANSFER_AMOUNT_LARGE - TRANSFER_AMOUNT_SMALL, TRANSFER_AMOUNT_SMALL);
+        List<CreateAccountResponse> accountsAfter = getAccounts(user);
+        CreateAccountResponse senderAfter = getAccountByNumber(accountsAfter, sender.getAccountNumber());
+        CreateAccountResponse receiverAfter = getAccountByNumber(accountsAfter, receiver.getAccountNumber());
+
+        assertThat(senderAfter.getBalance())
+                .isCloseTo(TRANSFER_AMOUNT_LARGE - TRANSFER_AMOUNT_SMALL, within(DELTA));
+        assertThat(receiverAfter.getBalance())
+                .isCloseTo(TRANSFER_AMOUNT_SMALL, within(DELTA));
     }
 
     @Test
     @DisplayName("Should reject transfer with insufficient funds")
     public void shouldRejectTransferWithInsufficientFunds() {
-        setupUserAndAccounts();
+        CreateUserRequest user = createUser();
+        createTwoAccounts();
 
-        fillTransferForm()
+        List<CreateAccountResponse> accounts = getAccounts(user);
+        CreateAccountResponse receiver = accounts.get(1);
+
+        new UserDashboard()
+                .openTransfer()
+                .selectFirstAccount()
+                .enterRecipientName(user.getUsername())
+                .enterRecipientAccount(receiver.getAccountNumber())
                 .enterTransferAmount(TRANSFER_AMOUNT_SMALL)
                 .confirm()
-                .submitTransfer();
+                .submitTransfer()
+                .checkAlertMessageAndAccept(BankAlert.INSUFFICIENT_FUNDS.getMessage());
 
-        assertBalances(0.0, 0.0);
+        List<CreateAccountResponse> accountsAfter = getAccounts(user);
+        assertThat(accountsAfter.getFirst().getBalance()).isZero();
+        assertThat(accountsAfter.get(1).getBalance()).isZero();
     }
 
     @Test
     @DisplayName("Should reject transfer without confirmation")
     public void shouldRejectTransferWithoutConfirmation() {
-        setupUserAndAccounts();
-        makeDeposit(TRANSFER_AMOUNT_LARGE);
+        CreateUserRequest user = createUser();
+        createTwoAccounts();
 
-        fillTransferForm()
+        List<CreateAccountResponse> accounts = getAccounts(user);
+        CreateAccountResponse receiver = accounts.get(1);
+
+        makeDeposit();
+
+        new UserDashboard()
+                .openTransfer()
+                .selectFirstAccount()
+                .enterRecipientName(user.getUsername())
+                .enterRecipientAccount(receiver.getAccountNumber())
                 .enterTransferAmount(TRANSFER_AMOUNT_SMALL)
-                .submitTransfer();
+                .submitTransfer()
+                .checkAlertMessageAndAccept(BankAlert.CONFIRM_TRANSFER.getMessage());
 
-        assertBalances(TRANSFER_AMOUNT_LARGE, 0.0);
+        List<CreateAccountResponse> accountsAfter = getAccounts(user);
+        assertThat(accountsAfter.getFirst().getBalance())
+                .isCloseTo(TRANSFER_AMOUNT_LARGE, within(DELTA));
+        assertThat(accountsAfter.get(1).getBalance()).isZero();
     }
 
     @Test
     @DisplayName("Should reject transfer with empty amount")
     public void shouldRejectTransferWithEmptyAmount() {
-        setupUserAndAccounts();
+        CreateUserRequest user = createUser();
+        createTwoAccounts();
 
-        fillTransferForm()
+        List<CreateAccountResponse> accounts = getAccounts(user);
+        CreateAccountResponse receiver = accounts.get(1);
+
+        new UserDashboard()
+                .openTransfer()
+                .selectFirstAccount()
+                .enterRecipientName(user.getUsername())
+                .enterRecipientAccount(receiver.getAccountNumber())
                 .confirm()
-                .submitTransfer();
+                .submitTransfer()
+                .checkAlertMessageAndAccept(BankAlert.FILL_ALL_FIELDS.getMessage());
 
-        assertBalances(0.0, 0.0);
+        List<CreateAccountResponse> accountsAfter = getAccounts(user);
+        assertThat(accountsAfter.getFirst().getBalance()).isZero();
+        assertThat(accountsAfter.get(1).getBalance()).isZero();
     }
 }

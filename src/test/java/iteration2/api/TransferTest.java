@@ -74,14 +74,23 @@ public class TransferTest {
     @MethodSource("validTransferAmounts")
     @DisplayName("Валидные переводы")
     void shouldSuccessfullyTransferMoney(double amount) {
-        transferMoney(senderAccountId, receiverAccountId, amount);
+        new TransferRequester(
+                RequestSpecs.authSpec(authToken),
+                ResponseSpecs.transferWasSuccessful()
+        ).post(buildRequest(senderAccountId, receiverAccountId, amount));
     }
 
-    @ParameterizedTest(name = "Сумма {0} должна быть отклонена")
+    @ParameterizedTest(name = "Сумма {0} должна быть отклонена: {1}")
     @MethodSource("invalidTransferAmounts")
     @DisplayName("Невалидные суммы переводов")
     void shouldRejectInvalidAmounts(double amount, String expectedError) {
-        String errorResponse = transferMoneyAndGetError(senderAccountId, receiverAccountId, amount);
+        String errorResponse = new TransferRequester(
+                RequestSpecs.authSpec(authToken),
+                ResponseSpecs.badRequest()
+        ).post(buildRequest(senderAccountId, receiverAccountId, amount))
+                .extract()
+                .asString();
+
         assertThat(errorResponse).contains(expectedError);
     }
 
@@ -90,34 +99,30 @@ public class TransferTest {
     void shouldRejectTransferExceedingBalance() {
         double transferAmount = TRANSFER_AMOUNT_LARGE + EXCEED_BALANCE_AMOUNT;
 
-        String errorResponse = transferMoneyAndGetError(senderAccountId, receiverAccountId, transferAmount);
+        String errorResponse = new TransferRequester(
+                RequestSpecs.authSpec(authToken),
+                ResponseSpecs.badRequest()
+        ).post(buildRequest(senderAccountId, receiverAccountId, transferAmount))
+                .extract()
+                .asString();
+
         assertThat(errorResponse).contains(ERROR_INSUFFICIENT_FUNDS);
     }
 
     @Test
     @DisplayName("Отказ при переводе на несуществующий счёт")
     void shouldRejectTransferToNonExistingAccount() {
-        String errorResponse = transferMoneyAndGetError(senderAccountId, NON_EXISTENT_ACCOUNT_ID, TRANSFER_AMOUNT_SMALL);
+        String errorResponse = new TransferRequester(
+                RequestSpecs.authSpec(authToken),
+                ResponseSpecs.badRequest()
+        ).post(buildRequest(senderAccountId, NON_EXISTENT_ACCOUNT_ID, TRANSFER_AMOUNT_SMALL))
+                .extract()
+                .asString();
+
         assertThat(errorResponse).contains(ERROR_ACCOUNT_NOT_FOUND);
     }
 
     // ================= HELPER METHODS =================
-
-    private void transferMoney(Long from, Long to, double amount) {
-        new TransferRequester(
-                RequestSpecs.authSpec(authToken),
-                ResponseSpecs.transferWasSuccessful()
-        ).post(buildRequest(from, to, amount));
-    }
-
-    private String transferMoneyAndGetError(Long from, Long to, double amount) {
-        return new TransferRequester(
-                RequestSpecs.authSpec(authToken),
-                ResponseSpecs.badRequest()
-        ).post(buildRequest(from, to, amount))
-                .extract()
-                .asString();
-    }
 
     private TransferMoneyRequest buildRequest(Long from, Long to, double amount) {
         return TransferMoneyRequest.builder()

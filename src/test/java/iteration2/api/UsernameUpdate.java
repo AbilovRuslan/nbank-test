@@ -10,8 +10,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
+import requests.LoginUserRequester;
 import requests.skelethon.Endpoint;
-import requests.skelethon.requesters.CrudRequester;
 import requests.steps.AdminSteps;
 import specs.RequestSpecs;
 import specs.ResponseSpecs;
@@ -37,9 +37,8 @@ public class UsernameUpdate {
                 .password(userRequest.getPassword())
                 .build();
 
-        String authToken = new CrudRequester(
+        String authToken = new LoginUserRequester(
                 RequestSpecs.unauthSpec(),
-                Endpoint.LOGIN,
                 ResponseSpecs.requestReturnsOK()
         ).post(loginRequest)
                 .extract()
@@ -57,7 +56,7 @@ public class UsernameUpdate {
         assertThat(profile.getName()).isEqualTo(VALID_NAME_TWO_WORDS);
     }
 
-    @ParameterizedTest(name = "Невалидное имя: {0}")
+    @ParameterizedTest(name = "Невалидное имя: {0} -> {1}")
     @MethodSource("invalidNames")
     @DisplayName("Невалидные имена должны отклоняться")
     void shouldRejectInvalidNames(String invalidName, String expectedError) {
