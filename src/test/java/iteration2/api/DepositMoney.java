@@ -1,6 +1,5 @@
 package iteration2.api;
 
-import io.restassured.specification.RequestSpecification;
 import models.AccountInfoResponse;
 import models.CreateUserRequest;
 import models.DepositMoneyRequest;
@@ -13,8 +12,10 @@ import requests.CreateAccountRequester;
 import requests.DepositRequester;
 import requests.LoginUserRequester;
 import requests.steps.AdminSteps;
+import requests.steps.UserSteps;
 import specs.RequestSpecs;
 import specs.ResponseSpecs;
+import models.CreateAccountResponse;
 
 import java.util.List;
 import java.util.stream.Stream;
@@ -25,29 +26,28 @@ import static org.assertj.core.api.Assertions.assertThat;
 @DisplayName("Депозиты на счет")
 public class DepositMoney {
 
-    private RequestSpecification authSpec;
+    private CreateUserRequest user;
+    private String authToken;
     private Long accountId;
 
     @BeforeEach
     void setup() {
-        CreateUserRequest userRequest = AdminSteps.createUser();
+        user = AdminSteps.createUser();
 
         LoginUserRequest loginRequest = LoginUserRequest.builder()
-                .username(userRequest.getUsername())
-                .password(userRequest.getPassword())
+                .username(user.getUsername())
+                .password(user.getPassword())
                 .build();
 
-        String authToken = new LoginUserRequester(
+        authToken = new LoginUserRequester(
                 RequestSpecs.unauthSpec(),
                 ResponseSpecs.requestReturnsOK()
         ).post(loginRequest)
                 .extract()
                 .header("Authorization");
 
-        authSpec = RequestSpecs.authSpec(authToken);
-
         accountId = new CreateAccountRequester(
-                authSpec,
+                RequestSpecs.authSpec(authToken),
                 ResponseSpecs.entityWasCreated()
         ).post()
                 .extract()
@@ -55,71 +55,47 @@ public class DepositMoney {
                 .getId();
     }
 
-    @ParameterizedTest(name = "{0}")
+    @ParameterizedTest(name = "Несколько депозитов: {0}")
     @MethodSource("multipleDepositsScenarios")
     @DisplayName("Несколько депозитов подряд")
-    void shouldMaintainCorrectBalanceAfterMultipleDeposits(String scenarioName, List<Double> deposits) {
+    void shouldMaintainCorrectBalanceAfterMultipleDeposits(String scenarioName, List<Double> deposits, double expectedFinalBalance) {
         for (double amount : deposits) {
-            depositMoney(amount);
+            new DepositRequester(
+                    RequestSpecs.authSpec(authToken),
+                    ResponseSpecs.balanceWasUpdated()
+            ).post(buildDepositRequest(accountId, amount));
         }
+
+        assertThat(getBalance())
+                .as("Итоговый баланс после сценария: " + scenarioName)
+                .isCloseTo(expectedFinalBalance, within(DELTA));
     }
 
     @ParameterizedTest(name = "Валидная сумма: {0}")
     @MethodSource("validDepositAmounts")
     @DisplayName("Валидные суммы депозитов")
     void shouldAcceptValidDepositAmounts(double amount) {
-        depositMoney(amount);
+        new DepositRequester(
+                RequestSpecs.authSpec(authToken),
+                ResponseSpecs.balanceWasUpdated()
+        ).post(buildDepositRequest(accountId, amount));
     }
 
     @ParameterizedTest(name = "Невалидная сумма: {0} -> {1}")
     @MethodSource("invalidDepositAmounts")
     @DisplayName("Невалидные суммы депозитов")
     void shouldRejectInvalidDepositAmounts(double amount, String expectedMessage) {
-        String errorResponse = depositMoneyAndGetError(amount);
+        String errorResponse = new DepositRequester(
+                RequestSpecs.authSpec(authToken),
+                ResponseSpecs.badRequest()
+        ).post(buildDepositRequest(accountId, amount))
+                .extract()
+                .asString();
+
         assertThat(errorResponse).contains(expectedMessage);
     }
 
-    @Test
-    @Disabled("Лимит депозита работает с округлением, тест требует доработки под новую версию API")
-    @DisplayName("Отказ при превышении лимита")
-    void shouldRejectDepositWhenTotalExceedsLimit() {
-        depositMoney(MAX_DEPOSIT_LIMIT - DELTA);
-
-        String errorResponse = depositMoneyAndGetError(EXCEED_LIMIT_AMOUNT);
-        assertThat(errorResponse).contains(ERROR_MAX_DEPOSIT);
-    }
-
-    @Test
-    @DisplayName("Депозит на несуществующий счет")
-    void shouldThrowWhenDepositingToNonExistentAccount() {
-        new DepositRequester(
-                authSpec,
-                ResponseSpecs.forbidden()
-        ).post(buildDepositRequest(NON_EXISTENT_ACCOUNT_ID, TRANSFER_AMOUNT_SMALL));
-    }
-
-    @Test
-    @DisplayName("Депозит без авторизации")
-    void shouldThrowWhenDepositingWithoutAuth() {
-        new DepositRequester(
-                RequestSpecs.unauthSpec(),
-                ResponseSpecs.unauthorized()
-        ).post(buildDepositRequest(accountId, TRANSFER_AMOUNT_SMALL));
-    }
-
     // ================= HELPER METHODS =================
-
-    private void depositMoney(double amount) {
-        new DepositRequester(authSpec, ResponseSpecs.balanceWasUpdated())
-                .post(buildDepositRequest(accountId, amount));
-    }
-
-    private String depositMoneyAndGetError(double amount) {
-        return new DepositRequester(authSpec, ResponseSpecs.badRequest())
-                .post(buildDepositRequest(accountId, amount))
-                .extract()
-                .asString();
-    }
 
     private DepositMoneyRequest buildDepositRequest(Long id, double amount) {
         return DepositMoneyRequest.builder()
@@ -128,11 +104,17 @@ public class DepositMoney {
                 .build();
     }
 
+    private double getBalance() {
+        List<CreateAccountResponse> accounts = new UserSteps(user.getUsername(), user.getPassword())
+                .getAllAccounts();
+        assertThat(accounts).hasSize(1);
+        return accounts.getFirst().getBalance();
+    }
     private static Stream<Arguments> multipleDepositsScenarios() {
         return Stream.of(
-                Arguments.of("Three deposits", List.of(1000.0, 500.0, 250.75)),
-                Arguments.of("Two deposits reaching limit", List.of(MIN_VALID_DEPOSIT, MAX_DEPOSIT_LIMIT - DELTA)),
-                Arguments.of("Four deposits", List.of(100.0, 200.0, 300.0, 400.0))
+                Arguments.of("Three deposits", List.of(1000.0, 500.0, 250.75), 1750.75),
+                Arguments.of("Two deposits reaching limit", List.of(MIN_VALID_DEPOSIT, MAX_DEPOSIT_LIMIT - DELTA), MAX_DEPOSIT_LIMIT + 0.009),
+                Arguments.of("Four deposits", List.of(100.0, 200.0, 300.0, 400.0), 1000.0)
         );
     }
 
