@@ -1,9 +1,14 @@
 package iteration1.api;
 
 import models.CreateUserRequest;
+import models.CreateAccountResponse;
+import dao.AccountDao;
+import dao.compration.DaoAndModelAssertions;
+import requests.steps.DataBaseSteps;
 import org.junit.jupiter.api.Test;
 import requests.skelethon.Endpoint;
 import requests.skelethon.requesters.CrudRequester;
+import requests.skelethon.requesters.ValidatedCrudRequester;
 import requests.steps.AdminSteps;
 import specs.RequestSpecs;
 import specs.ResponseSpecs;
@@ -14,11 +19,14 @@ public class CreateAccountTest extends BaseTest {
     public void userCanCreateAccountTest() {
         CreateUserRequest userRequest = AdminSteps.createUser();
 
-        new CrudRequester(RequestSpecs.authAsUser(userRequest.getUsername(), userRequest.getPassword()),
-                Endpoint.ACCOUNTS,
-                ResponseSpecs.entityWasCreated())
+        CreateAccountResponse createAccountResponse = new ValidatedCrudRequester<CreateAccountResponse>
+                (RequestSpecs.authAsUser(userRequest.getUsername(), userRequest.getPassword()),
+                        Endpoint.ACCOUNTS,
+                        ResponseSpecs.entityWasCreated())
                 .post(null);
 
-        // запросить все аккаунты пользователя и проверить, что наш аккаунт там
+        AccountDao accountDao = DataBaseSteps.getAccountByAccountNumber(createAccountResponse.getAccountNumber());
+
+        DaoAndModelAssertions.assertThat(createAccountResponse, accountDao).match();
     }
 }

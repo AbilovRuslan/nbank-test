@@ -10,7 +10,7 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class UpdateUsernameRequest {
+public class UpdateUsernameRequest extends BaseModel {
     @JsonProperty("username")
     private String username;
 }

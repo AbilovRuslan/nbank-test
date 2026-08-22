@@ -43,6 +43,12 @@ public enum Endpoint {
             AccountInfoResponse.class
     ),
 
+    TRANSFER(
+            "/api/v1/accounts/transfer",
+            TransferMoneyRequest.class,
+            AccountInfoResponse.class
+    ),
+
     CUSTOMER_PROFILE(
             "/api/v1/customer/profile",
             BaseModel.class,

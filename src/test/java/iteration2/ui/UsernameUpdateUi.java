@@ -1,5 +1,7 @@
 package iteration2.ui;
 
+import dao.UserDao;
+import requests.steps.DataBaseSteps;
 import iteration1.ui.BaseUiTest;
 import models.CreateUserRequest;
 import org.junit.jupiter.api.DisplayName;
@@ -44,6 +46,10 @@ public class UsernameUpdateUi extends BaseUiTest {
                 .checkAlertMessageAndAccept(BankAlert.NAME_UPDATED.getMessage());
 
         assertThat(getActualName(user)).isEqualTo(VALID_NAME_TWO_WORDS);
+
+        // БД-проверка
+        UserDao userDao = DataBaseSteps.getUserByUsername(user.getUsername());
+        assertThat(userDao.getName()).isEqualTo(VALID_NAME_TWO_WORDS);
     }
 
     @ParameterizedTest
@@ -61,6 +67,10 @@ public class UsernameUpdateUi extends BaseUiTest {
                 .checkAlertMessageAndAccept(expectedAlert.getMessage());
 
         assertThat(getActualName(user)).isEqualTo(nameBefore);
+
+        // БД-проверка: имя не изменилось
+        UserDao userDao = DataBaseSteps.getUserByUsername(user.getUsername());
+        assertThat(userDao.getName()).isEqualTo(nameBefore);
     }
 
     @ParameterizedTest
@@ -78,6 +88,10 @@ public class UsernameUpdateUi extends BaseUiTest {
                 .checkAlertMessageAndAccept(expectedAlert.getMessage());
 
         assertThat(getActualName(user)).isEqualTo(nameBefore);
+
+        // БД-проверка: имя не изменилось
+        UserDao userDao = DataBaseSteps.getUserByUsername(user.getUsername());
+        assertThat(userDao.getName()).isEqualTo(nameBefore);
     }
 
     static Stream<Arguments> invalidRequiredNames() {

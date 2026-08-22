@@ -1,5 +1,7 @@
 package iteration1.api;
 
+import dao.UserDao;
+import requests.steps.DataBaseSteps;
 import models.CreateUserRequest;
 import models.CreateUserResponse;
 import models.LoginUserRequest;
@@ -11,6 +13,8 @@ import requests.skelethon.requesters.ValidatedCrudRequester;
 import requests.steps.AdminSteps;
 import specs.RequestSpecs;
 import specs.ResponseSpecs;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 public class LoginUserTest extends BaseTest {
 
@@ -25,6 +29,11 @@ public class LoginUserTest extends BaseTest {
                 Endpoint.LOGIN,
                 ResponseSpecs.requestReturnsOK())
                 .post(userRequest);
+
+        // БД-проверка: админ существует
+        UserDao adminDao = DataBaseSteps.getUserByUsername("admin");
+        assertThat(adminDao).isNotNull();
+        assertThat(adminDao.getRole()).isEqualTo("ADMIN");
     }
 
     @Test
@@ -36,5 +45,10 @@ public class LoginUserTest extends BaseTest {
                 ResponseSpecs.requestReturnsOK())
                 .post(LoginUserRequest.builder().username(userRequest.getUsername()).password(userRequest.getPassword()).build())
                 .header("Authorization", Matchers.notNullValue());
+
+        // БД-проверка: пользователь существует
+        UserDao userDao = DataBaseSteps.getUserByUsername(userRequest.getUsername());
+        assertThat(userDao).isNotNull();
+        assertThat(userDao.getUsername()).isEqualTo(userRequest.getUsername());
     }
 }

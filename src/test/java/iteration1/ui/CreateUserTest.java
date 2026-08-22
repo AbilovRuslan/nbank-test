@@ -6,6 +6,8 @@ import models.CreateUserResponse;
 import models.comparison.ModelAssertions;
 import requests.steps.AdminSteps;
 import common.annotations.AdminSession;
+import dao.UserDao;
+import requests.steps.DataBaseSteps;
 import org.junit.jupiter.api.Test;
 import requests.ui.pages.UserBage;
 import requests.ui.pages.AdminPanel;
@@ -33,6 +35,11 @@ public class CreateUserTest extends BaseUiTest {
                 .findFirst().get();
 
         ModelAssertions.assertThatModels(newUser, createdUser).match();
+
+        // БД-проверка: пользователь создан
+        UserDao userDao = DataBaseSteps.getUserByUsername(newUser.getUsername());
+        assertThat(userDao).isNotNull();
+        assertThat(userDao.getUsername()).isEqualTo(newUser.getUsername());
     }
 
     @Test
@@ -49,5 +56,9 @@ public class CreateUserTest extends BaseUiTest {
                 .filter(user -> user.getUsername().equals(newUser.getUsername())).count();
 
         assertThat(usersWithSameUsernameAsNewUser).isZero();
+
+        // БД-проверка: пользователь не создан
+        UserDao userDao = DataBaseSteps.getUserByUsername(newUser.getUsername());
+        assertThat(userDao).isNull();
     }
 }

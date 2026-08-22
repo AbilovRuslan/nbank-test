@@ -1,5 +1,7 @@
 package iteration2.ui;
 
+import dao.AccountDao;
+import requests.steps.DataBaseSteps;
 import iteration1.ui.BaseUiTest;
 import models.CreateAccountResponse;
 import models.CreateUserRequest;
@@ -14,7 +16,6 @@ import java.util.List;
 
 import static constants.TestConstants.*;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.within;
 
 public class TransferTestUi extends BaseUiTest {
 
@@ -28,40 +29,24 @@ public class TransferTestUi extends BaseUiTest {
         return new UserSteps(user.getUsername(), user.getPassword()).getAllAccounts();
     }
 
-    private CreateAccountResponse getAccountByNumber(List<CreateAccountResponse> accounts, String accountNumber) {
-        return accounts.stream()
-                .filter(a -> a.getAccountNumber().equals(accountNumber))
-                .findFirst()
-                .orElseThrow();
-    }
+    @Test
+    @DisplayName("User can transfer money")
+    public void userCanTransferMoney() {
+        CreateUserRequest user = createUser();
 
-    private void createTwoAccounts() {
         new UserDashboard()
                 .open()
                 .createNewAccount()
-                .createNewAccount();
-    }
-
-    private void makeDeposit() {
-        new UserDashboard()
+                .createNewAccount()
                 .openDeposit()
                 .selectFirstAccount()
                 .enterAmount(TRANSFER_AMOUNT_LARGE)
                 .submitDeposit()
                 .checkAlertMessageAndAccept(BankAlert.DEPOSIT_SUCCESSFUL.getMessage());
-    }
-
-    @Test
-    @DisplayName("User can transfer money")
-    public void userCanTransferMoney() {
-        CreateUserRequest user = createUser();
-        createTwoAccounts();
 
         List<CreateAccountResponse> accounts = getAccounts(user);
         CreateAccountResponse sender = accounts.getFirst();
         CreateAccountResponse receiver = accounts.get(1);
-
-        makeDeposit();
 
         new UserDashboard()
                 .openTransfer()
@@ -73,13 +58,14 @@ public class TransferTestUi extends BaseUiTest {
                 .submitTransfer()
                 .checkAlertMessageAndAccept(BankAlert.TRANSFER_SUCCESSFUL.getMessage());
 
-        List<CreateAccountResponse> accountsAfter = getAccounts(user);
-        CreateAccountResponse senderAfter = getAccountByNumber(accountsAfter, sender.getAccountNumber());
-        CreateAccountResponse receiverAfter = getAccountByNumber(accountsAfter, receiver.getAccountNumber());
-
-        assertThat(senderAfter.getBalance())
+        // БД-проверка отправителя
+        AccountDao senderDao = DataBaseSteps.getAccountByAccountNumber(sender.getAccountNumber());
+        assertThat(senderDao.getBalance())
                 .isCloseTo(TRANSFER_AMOUNT_LARGE - TRANSFER_AMOUNT_SMALL, within(DELTA));
-        assertThat(receiverAfter.getBalance())
+
+        // БД-проверка получателя
+        AccountDao receiverDao = DataBaseSteps.getAccountByAccountNumber(receiver.getAccountNumber());
+        assertThat(receiverDao.getBalance())
                 .isCloseTo(TRANSFER_AMOUNT_SMALL, within(DELTA));
     }
 
@@ -87,9 +73,14 @@ public class TransferTestUi extends BaseUiTest {
     @DisplayName("Should reject transfer with insufficient funds")
     public void shouldRejectTransferWithInsufficientFunds() {
         CreateUserRequest user = createUser();
-        createTwoAccounts();
+
+        new UserDashboard()
+                .open()
+                .createNewAccount()
+                .createNewAccount();
 
         List<CreateAccountResponse> accounts = getAccounts(user);
+        CreateAccountResponse sender = accounts.getFirst();
         CreateAccountResponse receiver = accounts.get(1);
 
         new UserDashboard()
@@ -102,21 +93,32 @@ public class TransferTestUi extends BaseUiTest {
                 .submitTransfer()
                 .checkAlertMessageAndAccept(BankAlert.INSUFFICIENT_FUNDS.getMessage());
 
-        List<CreateAccountResponse> accountsAfter = getAccounts(user);
-        assertThat(accountsAfter.getFirst().getBalance()).isZero();
-        assertThat(accountsAfter.get(1).getBalance()).isZero();
+        // БД-проверка: балансы не изменились
+        AccountDao senderDao = DataBaseSteps.getAccountByAccountNumber(sender.getAccountNumber());
+        AccountDao receiverDao = DataBaseSteps.getAccountByAccountNumber(receiver.getAccountNumber());
+
+        assertThat(senderDao.getBalance()).isZero();
+        assertThat(receiverDao.getBalance()).isZero();
     }
 
     @Test
     @DisplayName("Should reject transfer without confirmation")
     public void shouldRejectTransferWithoutConfirmation() {
         CreateUserRequest user = createUser();
-        createTwoAccounts();
+
+        new UserDashboard()
+                .open()
+                .createNewAccount()
+                .createNewAccount()
+                .openDeposit()
+                .selectFirstAccount()
+                .enterAmount(TRANSFER_AMOUNT_LARGE)
+                .submitDeposit()
+                .checkAlertMessageAndAccept(BankAlert.DEPOSIT_SUCCESSFUL.getMessage());
 
         List<CreateAccountResponse> accounts = getAccounts(user);
+        CreateAccountResponse sender = accounts.getFirst();
         CreateAccountResponse receiver = accounts.get(1);
-
-        makeDeposit();
 
         new UserDashboard()
                 .openTransfer()
@@ -127,19 +129,26 @@ public class TransferTestUi extends BaseUiTest {
                 .submitTransfer()
                 .checkAlertMessageAndAccept(BankAlert.CONFIRM_TRANSFER.getMessage());
 
-        List<CreateAccountResponse> accountsAfter = getAccounts(user);
-        assertThat(accountsAfter.getFirst().getBalance())
-                .isCloseTo(TRANSFER_AMOUNT_LARGE, within(DELTA));
-        assertThat(accountsAfter.get(1).getBalance()).isZero();
+        // БД-проверка: балансы не изменились
+        AccountDao senderDao = DataBaseSteps.getAccountByAccountNumber(sender.getAccountNumber());
+        AccountDao receiverDao = DataBaseSteps.getAccountByAccountNumber(receiver.getAccountNumber());
+
+        assertThat(senderDao.getBalance()).isCloseTo(TRANSFER_AMOUNT_LARGE, within(DELTA));
+        assertThat(receiverDao.getBalance()).isZero();
     }
 
     @Test
     @DisplayName("Should reject transfer with empty amount")
     public void shouldRejectTransferWithEmptyAmount() {
         CreateUserRequest user = createUser();
-        createTwoAccounts();
+
+        new UserDashboard()
+                .open()
+                .createNewAccount()
+                .createNewAccount();
 
         List<CreateAccountResponse> accounts = getAccounts(user);
+        CreateAccountResponse sender = accounts.getFirst();
         CreateAccountResponse receiver = accounts.get(1);
 
         new UserDashboard()
@@ -151,8 +160,15 @@ public class TransferTestUi extends BaseUiTest {
                 .submitTransfer()
                 .checkAlertMessageAndAccept(BankAlert.FILL_ALL_FIELDS.getMessage());
 
-        List<CreateAccountResponse> accountsAfter = getAccounts(user);
-        assertThat(accountsAfter.getFirst().getBalance()).isZero();
-        assertThat(accountsAfter.get(1).getBalance()).isZero();
+        // БД-проверка: балансы не изменились
+        AccountDao senderDao = DataBaseSteps.getAccountByAccountNumber(sender.getAccountNumber());
+        AccountDao receiverDao = DataBaseSteps.getAccountByAccountNumber(receiver.getAccountNumber());
+
+        assertThat(senderDao.getBalance()).isZero();
+        assertThat(receiverDao.getBalance()).isZero();
+    }
+
+    private static org.assertj.core.data.Offset<Double> within(double epsilon) {
+        return org.assertj.core.data.Offset.offset(epsilon);
     }
 }

@@ -1,5 +1,7 @@
 package iteration2.ui;
 
+import dao.AccountDao;
+import requests.steps.DataBaseSteps;
 import iteration1.ui.BaseUiTest;
 import models.CreateAccountResponse;
 import models.CreateUserRequest;
@@ -16,7 +18,6 @@ import java.util.List;
 
 import static constants.TestConstants.*;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.within;
 
 public class DepositMoneyUi extends BaseUiTest {
 
@@ -48,6 +49,10 @@ public class DepositMoneyUi extends BaseUiTest {
         List<CreateAccountResponse> accounts = getAccounts(user);
         assertThat(accounts).hasSize(1);
         assertThat(accounts.getFirst().getBalance()).isCloseTo(amount, within(DELTA));
+
+        // БД-проверка
+        AccountDao accountDao = DataBaseSteps.getAccountByAccountNumber(accounts.getFirst().getAccountNumber());
+        assertThat(accountDao.getBalance()).isCloseTo(amount, within(DELTA));
     }
 
     @ParameterizedTest
@@ -68,6 +73,10 @@ public class DepositMoneyUi extends BaseUiTest {
         List<CreateAccountResponse> accounts = getAccounts(user);
         assertThat(accounts).hasSize(1);
         assertThat(accounts.getFirst().getBalance()).isCloseTo(amount, within(DELTA));
+
+        // БД-проверка
+        AccountDao accountDao = DataBaseSteps.getAccountByAccountNumber(accounts.getFirst().getAccountNumber());
+        assertThat(accountDao.getBalance()).isCloseTo(amount, within(DELTA));
     }
 
     @Test
@@ -78,16 +87,17 @@ public class DepositMoneyUi extends BaseUiTest {
         double secondAmount = TRANSFER_AMOUNT_MEDIUM;
         double expectedBalance = firstAmount + secondAmount;
 
-        UserDashboard dashboard = new UserDashboard();
-        dashboard.open().createNewAccount();
-
-        dashboard.openDeposit()
+        new UserDashboard()
+                .open()
+                .createNewAccount()
+                .openDeposit()
                 .selectFirstAccount()
                 .enterAmount(firstAmount)
                 .submitDeposit()
                 .checkAlertMessageAndAccept(BankAlert.DEPOSIT_SUCCESSFUL.getMessage());
 
-        dashboard.openDeposit()
+        new UserDashboard()
+                .openDeposit()
                 .selectFirstAccount()
                 .enterAmount(secondAmount)
                 .submitDeposit()
@@ -96,6 +106,10 @@ public class DepositMoneyUi extends BaseUiTest {
         List<CreateAccountResponse> accounts = getAccounts(user);
         assertThat(accounts).hasSize(1);
         assertThat(accounts.getFirst().getBalance()).isCloseTo(expectedBalance, within(DELTA));
+
+        // БД-проверка
+        AccountDao accountDao = DataBaseSteps.getAccountByAccountNumber(accounts.getFirst().getAccountNumber());
+        assertThat(accountDao.getBalance()).isCloseTo(expectedBalance, within(DELTA));
     }
 
     @Test
@@ -114,6 +128,10 @@ public class DepositMoneyUi extends BaseUiTest {
         List<CreateAccountResponse> accounts = getAccounts(user);
         assertThat(accounts).hasSize(1);
         assertThat(accounts.getFirst().getBalance()).isZero();
+
+        // БД-проверка
+        AccountDao accountDao = DataBaseSteps.getAccountByAccountNumber(accounts.getFirst().getAccountNumber());
+        assertThat(accountDao.getBalance()).isZero();
     }
 
     @Test
@@ -133,6 +151,10 @@ public class DepositMoneyUi extends BaseUiTest {
         List<CreateAccountResponse> accounts = getAccounts(user);
         assertThat(accounts).hasSize(1);
         assertThat(accounts.getFirst().getBalance()).isZero();
+
+        // БД-проверка
+        AccountDao accountDao = DataBaseSteps.getAccountByAccountNumber(accounts.getFirst().getAccountNumber());
+        assertThat(accountDao.getBalance()).isZero();
     }
 
     @Test
@@ -152,5 +174,13 @@ public class DepositMoneyUi extends BaseUiTest {
         List<CreateAccountResponse> accounts = getAccounts(user);
         assertThat(accounts).hasSize(1);
         assertThat(accounts.getFirst().getBalance()).isZero();
+
+        // БД-проверка
+        AccountDao accountDao = DataBaseSteps.getAccountByAccountNumber(accounts.getFirst().getAccountNumber());
+        assertThat(accountDao.getBalance()).isZero();
+    }
+
+    private static org.assertj.core.data.Offset<Double> within(double epsilon) {
+        return org.assertj.core.data.Offset.offset(epsilon);
     }
 }
