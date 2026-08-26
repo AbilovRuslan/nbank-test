@@ -14,6 +14,7 @@ import requests.steps.AdminSteps;
 import specs.RequestSpecs;
 import specs.ResponseSpecs;
 
+import static constants.TestConstants.*;
 import static org.assertj.core.api.Assertions.assertThat;
 
 public class LoginUserTest extends BaseTest {
@@ -21,8 +22,8 @@ public class LoginUserTest extends BaseTest {
     @Test
     public void adminCanGenerateAuthTokenTest() {
         LoginUserRequest userRequest = LoginUserRequest.builder()
-                .username("admin")
-                .password("admin")
+                .username(ADMIN_USERNAME)
+                .password(ADMIN_PASSWORD)
                 .build();
 
         new ValidatedCrudRequester<CreateUserResponse>(RequestSpecs.unauthSpec(),
@@ -30,10 +31,9 @@ public class LoginUserTest extends BaseTest {
                 ResponseSpecs.requestReturnsOK())
                 .post(userRequest);
 
-        // БД-проверка: админ существует
-        UserDao adminDao = DataBaseSteps.getUserByUsername("admin");
+        UserDao adminDao = DataBaseSteps.getUserByUsername(ADMIN_USERNAME);
         assertThat(adminDao).isNotNull();
-        assertThat(adminDao.getRole()).isEqualTo("ADMIN");
+        assertThat(adminDao.getRole()).isEqualTo(ADMIN_ROLE);
     }
 
     @Test
@@ -46,7 +46,6 @@ public class LoginUserTest extends BaseTest {
                 .post(LoginUserRequest.builder().username(userRequest.getUsername()).password(userRequest.getPassword()).build())
                 .header("Authorization", Matchers.notNullValue());
 
-        // БД-проверка: пользователь существует
         UserDao userDao = DataBaseSteps.getUserByUsername(userRequest.getUsername());
         assertThat(userDao).isNotNull();
         assertThat(userDao.getUsername()).isEqualTo(userRequest.getUsername());

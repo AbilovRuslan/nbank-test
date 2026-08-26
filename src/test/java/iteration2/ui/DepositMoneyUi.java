@@ -56,7 +56,7 @@ public class DepositMoneyUi extends BaseUiTest {
     }
 
     @ParameterizedTest
-    @ValueSource(doubles = {0.01, 100.0, 5000.0})
+    @ValueSource(doubles = {MIN_VALID_DEPOSIT, TRANSFER_AMOUNT_SMALL, MAX_DEPOSIT_LIMIT})
     @DisplayName("User can deposit valid amounts")
     public void userCanDepositValidAmounts(double amount) {
         CreateUserRequest user = createUser();

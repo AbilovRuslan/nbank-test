@@ -1,7 +1,5 @@
 package constants;
 
-
-
 public class TestConstants {
     // ================= БИЗНЕС-ЛИМИТЫ =================
     public static final double MAX_DEPOSIT_LIMIT = 5000.0;
@@ -15,6 +13,9 @@ public class TestConstants {
     public static final String ERROR_INVALID_AMOUNT = "Transfer amount must be at least 0.01";
     public static final String ERROR_INSUFFICIENT_FUNDS = "Invalid transfer: insufficient funds or invalid accounts";
     public static final String ERROR_ACCOUNT_NOT_FOUND = "Invalid transfer: insufficient funds or invalid accounts";
+    public static final String ERROR_UNAUTHORIZED_ACCOUNT = "Unauthorized access to account";
+    public static final String ERROR_NAME_REQUIRED = "Name must contain";
+    public static final String ERROR_NAME_FORMAT = "must contain two words";
 
     // ================= ТЕСТОВЫЕ ЗНАЧЕНИЯ ДЛЯ DEPOSIT =================
     public static final long NON_EXISTENT_ACCOUNT_ID = 999999L;
@@ -35,6 +36,12 @@ public class TestConstants {
     public static final double TRANSFER_AMOUNT_LARGE = 1000.0;
     public static final double TRANSFER_AMOUNT_MAX = 2500.75;
 
+    // ================= ДОПОЛНИТЕЛЬНЫЕ ЗНАЧЕНИЯ ДЛЯ ДЕПОЗИТОВ =================
+    public static final double DEPOSIT_200 = 200.0;
+    public static final double DEPOSIT_300 = 300.0;
+    public static final double DEPOSIT_400 = 400.0;
+    public static final double LIMIT_ROUNDING_ARTIFACT = 0.009;
+
     // ================= ПРОЦЕНТЫ ДЛЯ РАСЧЕТОВ =================
     public static final double TRANSFER_PERCENT_30 = 0.3;
     public static final double TRANSFER_PERCENT_70 = 0.7;
@@ -44,14 +51,6 @@ public class TestConstants {
     // ================= БАЛАНСЫ =================
     public static final double MIN_INITIAL_BALANCE = 500.0;
     public static final double MAX_INITIAL_BALANCE = 5000.0;
-
-
-    // ================= ПРОЦЕНТЫ ДЛЯ РАСЧЕТОВ =================
-    public static final double PERCENT_30 = 0.3;
-    public static final double PERCENT_70 = 0.7;
-    public static final double PERCENT_50 = 0.5;
-    public static final double PERCENT_90 = 0.9;
-
 
     // ================= ТЕСТОВЫЕ ИМЕНА (из UsernameUpdate) =================
     public static final String VALID_NAME_TWO_WORDS = "Ivan Ivanov";
@@ -67,6 +66,14 @@ public class TestConstants {
     public static final String INVALID_NAME_SPECIAL_CHARS = "Ivan@ Ivanov";
     public static final String INVALID_NAME_NUMBERS = "Ivan 123";
     public static final String INVALID_NAME_SYMBOLS = "Ivan!#$% Ivanov";
+    public static final String INVALID_USERNAME_SHORT = "a";
+
+    // ================= ЗНАЧЕНИЯ ДЛЯ АУТЕНТИФИКАЦИИ =================
+    public static final long DEFAULT_USER_ID = 0L;
+    public static final String ADMIN_USERNAME = "admin";
+    public static final String ADMIN_PASSWORD = "admin";
+    public static final String ADMIN_ROLE = "ADMIN";
+    public static final String WELCOME_MESSAGE = "Welcome, noname!";
 
     // ================= HTTP СТАТУСЫ =================
     public static final int STATUS_OK = 200;
@@ -87,8 +94,8 @@ public class TestConstants {
     // ================= МАССИВЫ ДЛЯ ПАРАМЕТРИЗАЦИИ DEPOSIT =================
     public static final Double[] VALID_DEPOSIT_AMOUNTS = {
             MIN_VALID_DEPOSIT,
-            100.50,
-            2500.75,
+            TRANSFER_AMOUNT_MEDIUM,
+            TRANSFER_AMOUNT_MAX,
             MAX_DEPOSIT_LIMIT - DELTA,
             MAX_DEPOSIT_LIMIT
     };
@@ -106,9 +113,9 @@ public class TestConstants {
     // ================= МАССИВЫ ДЛЯ ПАРАМЕТРИЗАЦИИ TRANSFER =================
     public static final double[] VALID_TRANSFER_AMOUNTS = {
             MIN_TRANSFER,
-            100.50,
-            1000.0,
-            2500.75
+            TRANSFER_AMOUNT_MEDIUM,
+            TRANSFER_AMOUNT_LARGE,
+            TRANSFER_AMOUNT_MAX
     };
 
     public static final double[] INVALID_TRANSFER_AMOUNTS = {
@@ -139,9 +146,9 @@ public class TestConstants {
 
     // ================= СЦЕНАРИИ МНОЖЕСТВЕННЫХ ДЕПОЗИТОВ =================
     public static final Object[][] MULTIPLE_DEPOSITS_SCENARIOS = {
-            {"Three deposits", new Double[]{1000.0, 500.0, 250.75}, 1750.75},
-            {"Two deposits reaching limit", new Double[]{0.01, 4999.99}, 5000.0},
-            {"Four deposits", new Double[]{100.0, 200.0, 300.0, 400.0}, 1000.0}
+            {"Three deposits", new Double[]{TRANSFER_AMOUNT_LARGE, TRANSFER_AMOUNT_MEDIUM, TRANSFER_AMOUNT_SMALL}, TRANSFER_AMOUNT_LARGE + TRANSFER_AMOUNT_MEDIUM + TRANSFER_AMOUNT_SMALL},
+            {"Accumulated balance above deposit limit", new Double[]{MIN_VALID_DEPOSIT, MAX_DEPOSIT_LIMIT - DELTA}, MAX_DEPOSIT_LIMIT + LIMIT_ROUNDING_ARTIFACT},
+            {"Four deposits", new Double[]{DEPOSIT_200, DEPOSIT_300, DEPOSIT_400, TRANSFER_AMOUNT_SMALL}, DEPOSIT_200 + DEPOSIT_300 + DEPOSIT_400 + TRANSFER_AMOUNT_SMALL}
     };
 
     // Приватный конструктор чтобы нельзя было создать экземпляр

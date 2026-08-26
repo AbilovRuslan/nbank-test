@@ -93,7 +93,7 @@ public class DepositMoney {
     @DisplayName("Депозит на несуществующий счет")
     void shouldThrowWhenDepositingToNonExistentAccount() {
         String errorResponse = depositAndGetError(NON_EXISTENT_ACCOUNT_ID, TRANSFER_AMOUNT_SMALL);
-        assertThat(errorResponse).contains("Unauthorized access to account");
+        assertThat(errorResponse).contains(ERROR_UNAUTHORIZED_ACCOUNT);
 
         AccountDao accountDao = DataBaseSteps.getAccountById(NON_EXISTENT_ACCOUNT_ID);
         assertThat(accountDao).isNull();
@@ -156,16 +156,22 @@ public class DepositMoney {
 
     private static Stream<Arguments> multipleDepositsScenarios() {
         return Stream.of(
-                Arguments.of("Three deposits", List.of(1000.0, 500.0, 250.75), 1750.75),
-                Arguments.of("Accumulated balance above deposit limit", List.of(MIN_VALID_DEPOSIT, MAX_DEPOSIT_LIMIT - DELTA), MAX_DEPOSIT_LIMIT + 0.009),
-                Arguments.of("Four deposits", List.of(100.0, 200.0, 300.0, 400.0), 1000.0)
+                Arguments.of("Three deposits",
+                        List.of(TRANSFER_AMOUNT_LARGE, TRANSFER_AMOUNT_MEDIUM, TRANSFER_AMOUNT_SMALL),
+                        TRANSFER_AMOUNT_LARGE + TRANSFER_AMOUNT_MEDIUM + TRANSFER_AMOUNT_SMALL),
+                Arguments.of("Accumulated balance above deposit limit",
+                        List.of(MIN_VALID_DEPOSIT, MAX_DEPOSIT_LIMIT - DELTA),
+                        MAX_DEPOSIT_LIMIT + LIMIT_ROUNDING_ARTIFACT),
+                Arguments.of("Four deposits",
+                        List.of(DEPOSIT_200, DEPOSIT_300, DEPOSIT_400, TRANSFER_AMOUNT_SMALL),
+                        DEPOSIT_200 + DEPOSIT_300 + DEPOSIT_400 + TRANSFER_AMOUNT_SMALL)
         );
     }
 
     private static Stream<Arguments> validDepositAmounts() {
         return Stream.of(
                 Arguments.of(MIN_VALID_DEPOSIT),
-                Arguments.of(100.50),
+                Arguments.of(TRANSFER_AMOUNT_MEDIUM),
                 Arguments.of(MAX_DEPOSIT_LIMIT - DELTA),
                 Arguments.of(MAX_DEPOSIT_LIMIT)
         );

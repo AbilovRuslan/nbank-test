@@ -77,7 +77,7 @@ public class UsernameUpdate {
                 RequestSpecs.unauthSpec(),
                 Endpoint.CUSTOMER_PROFILE,
                 ResponseSpecs.unauthorized()
-        ).get(0L);
+        ).get(DEFAULT_USER_ID);
     }
 
     // ================= HELPER METHODS =================
@@ -87,7 +87,7 @@ public class UsernameUpdate {
                 RequestSpecs.authSpec(authToken),
                 Endpoint.CUSTOMER_PROFILE,
                 ResponseSpecs.requestReturnsOK()
-        ).update(0L, new UpdateUsernameRequest(newName));
+        ).update(DEFAULT_USER_ID, new UpdateUsernameRequest(newName));
     }
 
     private String updateNameAndGetError(String newName) {
@@ -95,7 +95,7 @@ public class UsernameUpdate {
                 RequestSpecs.authSpec(authToken),
                 Endpoint.CUSTOMER_PROFILE,
                 ResponseSpecs.badRequest()
-        ).update(0L, new UpdateUsernameRequest(newName))
+        ).update(DEFAULT_USER_ID, new UpdateUsernameRequest(newName))
                 .extract()
                 .body()
                 .asString();
@@ -106,19 +106,19 @@ public class UsernameUpdate {
                 RequestSpecs.authSpec(authToken),
                 Endpoint.CUSTOMER_PROFILE,
                 ResponseSpecs.requestReturnsOK()
-        ).get(0L)
+        ).get(DEFAULT_USER_ID)
                 .extract()
                 .as(UserProfileResponse.class);
     }
 
     private static Stream<Arguments> invalidNames() {
         return Stream.of(
-                Arguments.of(INVALID_NAME_EMPTY, "Name must contain"),
-                Arguments.of(INVALID_NAME_ONE_WORD, "must contain two words"),
-                Arguments.of(INVALID_NAME_SPECIAL_CHARS, "must contain two words"),
-                Arguments.of(INVALID_NAME_NUMBERS, "must contain two words"),
-                Arguments.of(INVALID_NAME_SPACES, "Name must contain"),
-                Arguments.of(INVALID_NAME_THREE_WORDS, "must contain two words")
+                Arguments.of(INVALID_NAME_EMPTY, ERROR_NAME_REQUIRED),
+                Arguments.of(INVALID_NAME_ONE_WORD, ERROR_NAME_FORMAT),
+                Arguments.of(INVALID_NAME_SPECIAL_CHARS, ERROR_NAME_FORMAT),
+                Arguments.of(INVALID_NAME_NUMBERS, ERROR_NAME_FORMAT),
+                Arguments.of(INVALID_NAME_SPACES, ERROR_NAME_REQUIRED),
+                Arguments.of(INVALID_NAME_THREE_WORDS, ERROR_NAME_FORMAT)
         );
     }
 }

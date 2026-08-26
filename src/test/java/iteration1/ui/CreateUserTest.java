@@ -13,6 +13,7 @@ import requests.ui.pages.UserBage;
 import requests.ui.pages.AdminPanel;
 import requests.ui.pages.BankAlert;
 
+import static constants.TestConstants.INVALID_USERNAME_SHORT;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -36,7 +37,6 @@ public class CreateUserTest extends BaseUiTest {
 
         ModelAssertions.assertThatModels(newUser, createdUser).match();
 
-        // БД-проверка: пользователь создан
         UserDao userDao = DataBaseSteps.getUserByUsername(newUser.getUsername());
         assertThat(userDao).isNotNull();
         assertThat(userDao.getUsername()).isEqualTo(newUser.getUsername());
@@ -46,7 +46,7 @@ public class CreateUserTest extends BaseUiTest {
     @AdminSession
     public void adminCannotCreateUserWithInvalidDataTest() {
         CreateUserRequest newUser = RandomModelGenerator.generate(CreateUserRequest.class);
-        newUser.setUsername("a");
+        newUser.setUsername(INVALID_USERNAME_SHORT);
 
         assertTrue(new AdminPanel().open().createUser(newUser.getUsername(), newUser.getPassword())
                 .checkAlertMessageAndAccept(BankAlert.USERNAME_MUST_BE_BETWEEN_3_AND_15_CHARACTERS.getMessage())
@@ -57,7 +57,6 @@ public class CreateUserTest extends BaseUiTest {
 
         assertThat(usersWithSameUsernameAsNewUser).isZero();
 
-        // БД-проверка: пользователь не создан
         UserDao userDao = DataBaseSteps.getUserByUsername(newUser.getUsername());
         assertThat(userDao).isNull();
     }
