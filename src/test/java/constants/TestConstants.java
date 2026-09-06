@@ -155,4 +155,47 @@ public class TestConstants {
     private TestConstants() {
         throw new UnsupportedOperationException("This is a constants class and cannot be instantiated");
     }
+
+    // ================= FRAUD DETECTION КОНСТАНТЫ =================
+
+    // Статусы Fraud Service
+    public static final String FRAUD_STATUS_SUCCESS = "SUCCESS";
+    public static final String FRAUD_STATUS_ERROR = "ERROR";
+    public static final String FRAUD_STATUS_PENDING_REVIEW = "PENDING_REVIEW";
+    public static final String FRAUD_STATUS_PENDING_VERIFICATION = "PENDING_VERIFICATION";
+
+    // Решения Fraud Service
+    public static final String FRAUD_DECISION_APPROVED = "APPROVED";
+    public static final String FRAUD_DECISION_BLOCKED = "BLOCKED";
+    public static final String FRAUD_DECISION_REVIEW_REQUIRED = "REVIEW_REQUIRED";
+    public static final String FRAUD_DECISION_VERIFICATION_REQUIRED = "VERIFICATION_REQUIRED";
+    public static final String FRAUD_DECISION_ERROR = "ERROR";
+
+    // Риск-скоры
+    public static final double FRAUD_RISK_NONE = 0.0;
+    public static final double FRAUD_RISK_LOW = 0.2;
+    public static final double FRAUD_RISK_MEDIUM = 0.6;
+    public static final double FRAUD_RISK_HIGH = 0.7;
+    public static final double FRAUD_RISK_CRITICAL = 0.95;
+
+    // Причины
+    public static final String FRAUD_REASON_LOW_RISK = "Low risk transaction";
+    public static final String FRAUD_REASON_HIGH_RISK = "High risk transaction detected";
+    public static final String FRAUD_REASON_MANUAL_REVIEW = "Suspicious transaction requires manual review";
+    public static final String FRAUD_REASON_VERIFICATION = "Additional verification required";
+    public static final String FRAUD_REASON_TIMEOUT = "Service timeout";
+    public static final String FRAUD_REASON_CONNECTION_REFUSED = "Connection refused";
+    public static final String FRAUD_REASON_INTERNAL_ERROR = "Internal server error";
+
+    // Сообщения в ответах
+    public static final String MESSAGE_APPROVED_AND_PROCESSED = "approved and processed immediately";
+    public static final String MESSAGE_BLOCKED_BY_FRAUD = "Blocked by fraud detection";
+    public static final String MESSAGE_PENDING_MANUAL_REVIEW = "Pending manual review";
+    public static final String MESSAGE_VERIFICATION_REQUIRED = "Additional verification required";
+    public static final String MESSAGE_SERVICE_TEMPORARILY_UNAVAILABLE = "Service temporarily unavailable";
+    public static final String MESSAGE_SERVICE_UNAVAILABLE = "Service unavailable";
+    public static final String MESSAGE_SERVICE_ERROR = "Service error";
+
+    // Настройки мока
+    public static final int FRAUD_RESPONSE_DELAY = 5000;
 }
