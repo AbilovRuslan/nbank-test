@@ -6,11 +6,14 @@ import models.CreateUserResponse;
 import models.comparison.ModelAssertions;
 import requests.steps.AdminSteps;
 import common.annotations.AdminSession;
+import dao.UserDao;
+import requests.steps.DataBaseSteps;
 import org.junit.jupiter.api.Test;
 import requests.ui.pages.UserBage;
 import requests.ui.pages.AdminPanel;
 import requests.ui.pages.BankAlert;
 
+import static constants.TestConstants.INVALID_USERNAME_SHORT;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -33,13 +36,17 @@ public class CreateUserTest extends BaseUiTest {
                 .findFirst().get();
 
         ModelAssertions.assertThatModels(newUser, createdUser).match();
+
+        UserDao userDao = DataBaseSteps.getUserByUsername(newUser.getUsername());
+        assertThat(userDao).isNotNull();
+        assertThat(userDao.getUsername()).isEqualTo(newUser.getUsername());
     }
 
     @Test
     @AdminSession
     public void adminCannotCreateUserWithInvalidDataTest() {
         CreateUserRequest newUser = RandomModelGenerator.generate(CreateUserRequest.class);
-        newUser.setUsername("a");
+        newUser.setUsername(INVALID_USERNAME_SHORT);
 
         assertTrue(new AdminPanel().open().createUser(newUser.getUsername(), newUser.getPassword())
                 .checkAlertMessageAndAccept(BankAlert.USERNAME_MUST_BE_BETWEEN_3_AND_15_CHARACTERS.getMessage())
@@ -49,5 +56,8 @@ public class CreateUserTest extends BaseUiTest {
                 .filter(user -> user.getUsername().equals(newUser.getUsername())).count();
 
         assertThat(usersWithSameUsernameAsNewUser).isZero();
+
+        UserDao userDao = DataBaseSteps.getUserByUsername(newUser.getUsername());
+        assertThat(userDao).isNull();
     }
 }

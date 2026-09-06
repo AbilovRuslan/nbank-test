@@ -7,13 +7,12 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.util.List;
-
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 @JsonIgnoreProperties(ignoreUnknown = true)
-public class AccountInfoResponse {
+public class AccountInfoResponse extends BaseModel {
     private Long id;
     private String accountNumber;
     private Double balance;
