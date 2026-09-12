@@ -9,9 +9,8 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class DepositMoneyRequest extends BaseModel {
+public class DepositResponse {
+    private String accountId;
     private double amount;
-
-    public double getAmount() { return amount; }
-    public void setAmount(double amount) { this.amount = amount; }
+    private double newBalance;
 }
